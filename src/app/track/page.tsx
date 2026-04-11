@@ -4,7 +4,8 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
-import { Ship, Search, MapPin, Package, CheckCircle, Circle, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
+import Image from 'next/image';
+import { Search, MapPin, Package, CheckCircle, Circle, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Shipment, ShipmentEvent, ShipmentStatus } from '@/types';
 import { formatDateTime, SHIPMENT_STATUS_CONFIG } from '@/lib/utils';
 
@@ -183,11 +184,10 @@ export default function TrackPage() {
           <Link href="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back to home
           </Link>
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center">
-              <Ship className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-white rounded-xl px-4 py-2">
+              <Image src="/logo.png" alt="Nexora Shipping" width={160} height={44} className="h-11 w-auto object-contain" />
             </div>
-            <span className="text-white font-bold text-xl">NEXORA SHIPPING</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Track Your Shipment</h1>
           <p className="text-slate-400">Enter your tracking number for real-time updates</p>

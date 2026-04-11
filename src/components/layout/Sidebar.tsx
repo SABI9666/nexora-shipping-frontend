@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -9,7 +10,6 @@ import {
   FileText,
   MapPin,
   LogOut,
-  Ship,
   Settings,
   Users,
 } from 'lucide-react';
@@ -36,14 +36,10 @@ export function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-brand-navy flex flex-col fixed left-0 top-0 z-40">
       {/* Logo */}
-      <div className="p-6 border-b border-white/10">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-brand-red rounded-lg flex items-center justify-center flex-shrink-0">
-            <Ship className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="text-white font-bold text-base leading-tight">NEXORA</div>
-            <div className="text-brand-red text-xs font-semibold tracking-widest">SHIPPING</div>
+      <div className="p-4 border-b border-white/10">
+        <Link href="/dashboard" className="flex items-center justify-center">
+          <div className="bg-white rounded-xl px-3 py-2">
+            <Image src="/logo.png" alt="Nexora Shipping" width={140} height={40} className="h-10 w-auto object-contain" />
           </div>
         </Link>
       </div>

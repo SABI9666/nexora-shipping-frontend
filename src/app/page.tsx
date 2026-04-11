@@ -1,16 +1,16 @@
 import Link from 'next/link';
-import { Ship, Package, MapPin, FileText, ArrowRight, CheckCircle } from 'lucide-react';
+import Image from 'next/image';
+import { Package, MapPin, FileText, ArrowRight, CheckCircle } from 'lucide-react';
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-navy-dark via-brand-navy to-brand-navy-light">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center">
-            <Ship className="w-5 h-5 text-white" />
+        <div className="flex items-center">
+          <div className="bg-white rounded-xl px-3 py-1.5">
+            <Image src="/logo.png" alt="Nexora Shipping" width={140} height={36} className="h-9 w-auto object-contain" />
           </div>
-          <span className="text-white font-bold text-xl">NEXORA <span className="text-brand-red">SHIPPING</span></span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium transition-colors">
