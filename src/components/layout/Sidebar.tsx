@@ -39,7 +39,7 @@ export function Sidebar() {
       <div className="p-4 border-b border-white/10">
         <Link href="/dashboard" className="flex items-center justify-center">
           <div className="bg-white rounded-xl px-3 py-2">
-            <Image src="/logo.png" alt="Nexora Shipping" width={140} height={40} className="h-10 w-auto object-contain" />
+            <Image src="/logo.svg" alt="Nexora Shipping" width={140} height={40} className="h-10 w-auto object-contain" />
           </div>
         </Link>
       </div>

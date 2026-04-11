@@ -9,7 +9,7 @@ export default function HomePage() {
       <nav className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto">
         <div className="flex items-center">
           <div className="bg-white rounded-xl px-3 py-1.5">
-            <Image src="/logo.png" alt="Nexora Shipping" width={140} height={36} className="h-9 w-auto object-contain" />
+            <Image src="/logo.svg" alt="Nexora Shipping" width={140} height={36} className="h-9 w-auto object-contain" />
           </div>
         </div>
         <div className="flex items-center gap-3">

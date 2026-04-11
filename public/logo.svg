@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 70" fill="none">
+  <!-- Ship/Wing Icon -->
+  <circle cx="35" cy="35" r="30" fill="#1A2B5F" opacity="0.15"/>
+  <path d="M20 42 C20 42 25 30 35 28 C45 26 50 32 50 32 L45 44 Z" fill="#D32F2F"/>
+  <path d="M18 44 L52 44 L50 48 C50 48 45 52 35 52 C25 52 20 48 20 48 Z" fill="#1A2B5F"/>
+  <path d="M30 28 L35 18 L40 28" fill="#1A2B5F"/>
+  <line x1="18" y1="46" x2="52" y2="46" stroke="#D32F2F" stroke-width="1.5"/>
+  <!-- NEXORA Text -->
+  <text x="72" y="40" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="26" letter-spacing="1">
+    <tspan fill="#D32F2F">NEX</tspan><tspan fill="#1A2B5F">ORA</tspan>
+  </text>
+  <!-- SHIPPING Text -->
+  <text x="74" y="56" font-family="Arial, sans-serif" font-weight="700" font-size="11" fill="#1A2B5F" letter-spacing="4">SHIPPING</text>
+</svg>
