@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { Package, MapPin, FileText, ArrowRight, CheckCircle, Truck } from 'lucide-react';
+import { NexoraLogo } from '@/components/ui/NexoraLogo';
 
 export default function HomePage() {
   return (
@@ -9,7 +9,7 @@ export default function HomePage() {
       <nav className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto">
         <div className="flex items-center">
           <div className="bg-white rounded-xl px-3 py-1.5">
-            <Image src="/logo.svg" alt="Nexora Shipping" width={140} height={36} className="h-9 w-auto object-contain" />
+            <NexoraLogo height={36} />
           </div>
         </div>
         <div className="flex items-center gap-3">

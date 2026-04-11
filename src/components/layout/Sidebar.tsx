@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { NexoraLogo } from '@/components/ui/NexoraLogo';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,7 +39,7 @@ export function Sidebar() {
       <div className="p-4 border-b border-white/10">
         <Link href="/dashboard" className="flex items-center justify-center">
           <div className="bg-white rounded-xl px-3 py-2">
-            <Image src="/logo.svg" alt="Nexora Shipping" width={140} height={40} className="h-10 w-auto object-contain" />
+            <NexoraLogo height={40} />
           </div>
         </Link>
       </div>

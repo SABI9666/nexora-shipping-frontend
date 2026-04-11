@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import Image from 'next/image';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { NexoraLogo } from '@/components/ui/NexoraLogo';
 
 const schema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
@@ -59,7 +59,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center bg-white rounded-2xl px-5 py-3 mb-4 shadow-lg">
-            <Image src="/logo.svg" alt="Nexora Shipping" width={160} height={44} className="h-11 w-auto object-contain" />
+            <NexoraLogo height={44} />
           </div>
           <h1 className="text-2xl font-bold text-white">Create Account</h1>
           <p className="text-slate-400 mt-1 text-sm">Join Nexora Shipping today</p>

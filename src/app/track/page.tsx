@@ -4,10 +4,10 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
-import Image from 'next/image';
 import { Search, MapPin, Package, CheckCircle, Circle, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Shipment, ShipmentEvent, ShipmentStatus } from '@/types';
 import { formatDateTime, SHIPMENT_STATUS_CONFIG } from '@/lib/utils';
+import { NexoraLogo } from '@/components/ui/NexoraLogo';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -186,7 +186,7 @@ export default function TrackPage() {
           </Link>
           <div className="flex items-center justify-center mb-4">
             <div className="bg-white rounded-xl px-4 py-2">
-              <Image src="/logo.svg" alt="Nexora Shipping" width={160} height={44} className="h-11 w-auto object-contain" />
+              <NexoraLogo height={44} />
             </div>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Track Your Shipment</h1>
