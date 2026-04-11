@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
@@ -21,7 +21,8 @@ const STATUS_ICONS: Record<ShipmentStatus, React.ElementType> = {
   RETURNED: AlertCircle,
 };
 
-export default function TrackPage() {
+// Inner component that uses useSearchParams — must be inside Suspense
+function TrackContent() {
   const searchParams = useSearchParams();
   const [trackingNumber, setTrackingNumber] = useState(searchParams.get('number') || '');
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -34,6 +35,7 @@ export default function TrackPage() {
       setTrackingNumber(number);
       handleTrack(number);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTrack = async (number?: string) => {
@@ -56,24 +58,7 @@ export default function TrackPage() {
   const statusConfig = shipment ? SHIPMENT_STATUS_CONFIG[shipment.status] : null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-brand-navy py-12 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <Link href="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to home
-          </Link>
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center">
-              <Ship className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-white font-bold text-xl">NEXORA SHIPPING</span>
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Track Your Shipment</h1>
-          <p className="text-slate-400">Enter your tracking number for real-time updates</p>
-        </div>
-      </div>
-
+    <>
       {/* Search */}
       <div className="max-w-2xl mx-auto px-4 -mt-6 mb-8">
         <div className="bg-white rounded-2xl shadow-lg p-2 flex gap-2">
@@ -159,7 +144,6 @@ export default function TrackPage() {
                   {shipment.events.map((event: ShipmentEvent, index: number) => {
                     const Icon = STATUS_ICONS[event.status] || Circle;
                     const isFirst = index === 0;
-                    const cfg = SHIPMENT_STATUS_CONFIG[event.status];
                     return (
                       <div key={event.id} className="flex gap-4">
                         <div className="flex flex-col items-center">
@@ -170,7 +154,7 @@ export default function TrackPage() {
                             <div className="w-px flex-1 bg-slate-200 my-1 min-h-[24px]" />
                           )}
                         </div>
-                        <div className={`pb-5 ${index < shipment.events!.length - 1 ? '' : ''}`}>
+                        <div className="pb-5">
                           <p className={`text-sm font-semibold ${isFirst ? 'text-slate-900' : 'text-slate-600'}`}>
                             {event.description}
                           </p>
@@ -186,6 +170,38 @@ export default function TrackPage() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function TrackPage() {
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-brand-navy py-12 px-4">
+        <div className="max-w-2xl mx-auto text-center">
+          <Link href="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to home
+          </Link>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center">
+              <Ship className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-white font-bold text-xl">NEXORA SHIPPING</span>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">Track Your Shipment</h1>
+          <p className="text-slate-400">Enter your tracking number for real-time updates</p>
+        </div>
+      </div>
+
+      {/* Suspense required for useSearchParams in Next.js 14 */}
+      <Suspense fallback={
+        <div className="max-w-2xl mx-auto px-4 mt-8 flex justify-center">
+          <div className="w-6 h-6 border-2 border-brand-navy border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <TrackContent />
+      </Suspense>
     </div>
   );
 }
