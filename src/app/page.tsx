@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Package, MapPin, FileText, ArrowRight, CheckCircle } from 'lucide-react';
+import { Package, MapPin, FileText, ArrowRight, CheckCircle, Truck } from 'lucide-react';
 
 export default function HomePage() {
   return (
@@ -54,7 +54,7 @@ export default function HomePage() {
             { icon: Package, title: 'Order Management', desc: 'Create, track, and manage all shipping orders from one dashboard.' },
             { icon: MapPin, title: 'Live Tracking', desc: 'Real-time shipment tracking with step-by-step event timeline.' },
             { icon: FileText, title: 'Document Storage', desc: 'Invoices, BOL, customs docs securely stored on Google Cloud.' },
-            { icon: Ship, title: 'Instant Quotes', desc: 'Automated pricing based on weight, dimensions, and destination.' },
+            { icon: Truck, title: 'Instant Quotes', desc: 'Automated pricing based on weight, dimensions, and destination.' },
           ].map(({ icon: Icon, title, desc }) => (
             <div key={title} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all">
               <div className="w-12 h-12 bg-brand-red/20 rounded-xl flex items-center justify-center mb-4">
