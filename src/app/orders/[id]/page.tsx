@@ -9,7 +9,12 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import api from '@/lib/api';
 import { formatCurrency, formatDate, formatDateTime, formatFileSize, SHIPMENT_STATUS_CONFIG } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { Order, Document, OrderStatus } from '@/types';
+import { Order, Shipment, Document, OrderStatus } from '@/types';
+
+type OrderDetail = Omit<Order, 'shipment' | 'documents'> & {
+  shipment?: Shipment;
+  documents: Document[];
+};
 import {
   ArrowLeft, Package, MapPin, Truck, FileText, Download,
   Edit2, Trash2, CheckCircle, AlertCircle, X, Loader2,
@@ -207,7 +212,7 @@ export default function OrderDetailPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['order', id],
-    queryFn: () => api.get(`/orders/${id}`).then((r) => r.data.data as Order & { documents: Document[] }),
+    queryFn: () => api.get(`/orders/${id}`).then((r) => r.data.data as OrderDetail),
   });
 
   const deleteMutation = useMutation({
