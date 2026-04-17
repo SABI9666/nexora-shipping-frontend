@@ -8,7 +8,7 @@ import { formatDate, formatFileSize } from '@/lib/utils';
 import { Document } from '@/types';
 import {
   Upload, FileText, Download, Trash2, Loader2,
-  File, CheckCircle, X, CloudUpload, AlertCircle,
+  File, CheckCircle, X, UploadCloud, AlertCircle,
 } from 'lucide-react';
 
 const DOC_TYPES = [
@@ -133,7 +133,7 @@ export default function DocumentsPage() {
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h2 className="font-semibold text-slate-900 mb-5 flex items-center gap-2">
-              <CloudUpload className="w-4 h-4 text-brand-navy" /> Upload Document
+              <UploadCloud className="w-4 h-4 text-brand-navy" /> Upload Document
             </h2>
 
             <form onSubmit={handleUpload} className="space-y-4">
@@ -244,7 +244,7 @@ export default function DocumentsPage() {
                 disabled={uploading || !selectedFile}
                 className="w-full btn-primary py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
                 {uploading ? 'Uploading...' : 'Upload to Google Cloud'}
               </button>
 
