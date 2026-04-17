@@ -46,11 +46,17 @@ function TrackContent() {
     setError('');
     setShipment(null);
     try {
-      const response = await axios.get(`${API_URL}/api/shipments/track/${tn}`);
+      const response = await axios.get(`${API_URL}/api/shipments/track/${tn}`, {
+        timeout: 15000,
+      });
       setShipment(response.data.data);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      setError(e.response?.data?.message || 'Shipment not found. Please check your tracking number.');
+      const e = err as { response?: { data?: { message?: string } }; code?: string; message?: string };
+      if (e.code === 'ECONNREFUSED' || e.code === 'ERR_NETWORK' || e.message?.includes('Network Error')) {
+        setError('Unable to reach the tracking server. Please try again in a moment.');
+      } else {
+        setError(e.response?.data?.message || 'Shipment not found. Please check your tracking number.');
+      }
     } finally {
       setLoading(false);
     }
