@@ -293,8 +293,12 @@ function UpdateStatusModal({ shipment, onClose, onSuccess }: UpdateStatusModalPr
       onSuccess();
       onClose();
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      setError(err.response?.data?.message || 'Failed to update status. Please try again.');
+    onError: (err: { response?: { status?: number; data?: { message?: string } } }) => {
+      if (err.response?.status === 403) {
+        setError('Your account does not have permission to update shipments. Ask an admin to upgrade your role.');
+      } else {
+        setError(err.response?.data?.message || 'Failed to update status. Please try again.');
+      }
     },
   });
 
@@ -499,7 +503,7 @@ export default function ShipmentsPage() {
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
 
-  const canUpdateStatus = user?.role === 'ADMIN' || user?.role === 'DRIVER';
+  const canUpdateStatus = !!user;
 
   const { data, isLoading } = useQuery({
     queryKey: ['shipments', page, search, status],
