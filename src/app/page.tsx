@@ -186,6 +186,9 @@ export default function HomePage() {
             <Link href="/auth/login" className="hover:text-white transition-colors">Privacy</Link>
             <Link href="/auth/login" className="hover:text-white transition-colors">Terms</Link>
             <Link href="/auth/login" className="hover:text-white transition-colors">Contact</Link>
+            <Link href="/auth/admin" className="hover:text-white transition-colors flex items-center gap-1 border-l border-white/10 pl-6">
+              <Shield className="w-3 h-3" /> Admin
+            </Link>
           </div>
         </div>
       </footer>
