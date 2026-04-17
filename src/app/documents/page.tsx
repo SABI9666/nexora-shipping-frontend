@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { formatDate, formatFileSize } from '@/lib/utils';
-import { Document } from '@/types';
+import { Document, Order } from '@/types';
 import {
   Upload, FileText, Download, Trash2, Loader2,
   File, CheckCircle, X, UploadCloud, AlertCircle,
@@ -42,11 +42,18 @@ export default function DocumentsPage() {
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
   const [docType, setDocType] = useState('invoice');
-  const [orderId, setOrderId] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // Load user's orders for the dropdown
+  const { data: ordersData } = useQuery({
+    queryKey: ['orders-for-docs'],
+    queryFn: () => api.get('/orders?limit=100').then((r) => r.data.data as Order[]),
+  });
+  const orders: Order[] = ordersData ?? [];
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['documents'],
@@ -60,8 +67,7 @@ export default function DocumentsPage() {
 
   const onFileChange = (file: File | null) => {
     if (!file) return;
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
+    if (file.size > 10 * 1024 * 1024) {
       setUploadError('File is too large. Maximum size is 10MB.');
       return;
     }
@@ -89,7 +95,7 @@ export default function DocumentsPage() {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('type', docType);
-      if (orderId.trim()) formData.append('orderId', orderId.trim());
+      if (selectedOrderId) formData.append('orderId', selectedOrderId);
 
       await api.post('/documents/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -97,7 +103,7 @@ export default function DocumentsPage() {
 
       setSelectedFile(null);
       if (fileRef.current) fileRef.current.value = '';
-      setOrderId('');
+      setSelectedOrderId('');
       setUploadSuccess(`"${selectedFile.name}" uploaded successfully.`);
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setTimeout(() => setUploadSuccess(''), 5000);
@@ -117,6 +123,8 @@ export default function DocumentsPage() {
       alert('Failed to get download link');
     }
   };
+
+  const selectedOrder = orders.find((o) => o.id === selectedOrderId);
 
   return (
     <DashboardLayout>
@@ -138,7 +146,6 @@ export default function DocumentsPage() {
 
             <form onSubmit={handleUpload} className="space-y-4">
 
-              {/* Success */}
               {uploadSuccess && (
                 <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-xs">
                   <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -146,7 +153,6 @@ export default function DocumentsPage() {
                 </div>
               )}
 
-              {/* Error */}
               {uploadError && (
                 <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -164,19 +170,30 @@ export default function DocumentsPage() {
                 </select>
               </div>
 
-              {/* Order ID */}
+              {/* Link to Order — dropdown showing orderNumber */}
               <div>
                 <label className="form-label">
-                  Order ID{' '}
+                  Link to Order{' '}
                   <span className="text-slate-400 text-xs font-normal">(optional)</span>
                 </label>
-                <input
-                  type="text"
-                  value={orderId}
-                  onChange={(e) => setOrderId(e.target.value)}
-                  placeholder="Paste order ID to link..."
+                <select
+                  value={selectedOrderId}
+                  onChange={(e) => setSelectedOrderId(e.target.value)}
                   className="form-input w-full"
-                />
+                >
+                  <option value="">— None (standalone document) —</option>
+                  {orders.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.orderNumber} · {o.deliveryCity}, {o.deliveryCountry} · {o.status}
+                    </option>
+                  ))}
+                </select>
+                {selectedOrder && (
+                  <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-green-500" />
+                    Linked to order <span className="font-mono font-semibold">{selectedOrder.orderNumber}</span>
+                  </p>
+                )}
               </div>
 
               {/* File drop zone */}
