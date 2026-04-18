@@ -338,11 +338,21 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleDownload}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 transition-colors"
-              >
-                <Download className="w-4 h-4" /> Download PDF
-              </button>
+  onClick={handleDownload}
+  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 transition-colors"
+>
+  <Download className="w-4 h-4" /> Download PDF
+</button>
+<button
+  onClick={handleDownloadWord}
+  disabled={downloading}
+  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 rounded-xl hover:bg-emerald-50 transition-colors disabled:opacity-50"
+>
+  {downloading
+    ? <Loader2 className="w-4 h-4 animate-spin" />
+    : <FileText className="w-4 h-4" />}
+  {downloading ? 'Downloading…' : 'Download Word'}
+</button>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
                 <X className="w-4 h-4" />
               </button>
