@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Invoice, InvoiceItem, InvoiceStatus, InvoiceCurrency, Order } from '@/types';
 import {
   Plus, FileText, Trash2, Eye, X, AlertCircle, CheckCircle,
-  Loader2, ChevronDown, ChevronUp, Search, Receipt,
+  Loader2, ChevronDown, ChevronUp, Search, Receipt, Download,
 } from 'lucide-react';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -105,32 +105,251 @@ function calcTax(subtotal: number, taxRate: string) {
   return subtotal * ((parseFloat(taxRate) || 0) / 100);
 }
 
+// ── PDF download ──────────────────────────────────────────────────────────────
+
+async function downloadInvoicePDF(invoice: Invoice, templateId: string) {
+  const el = document.getElementById(templateId);
+  if (!el) return;
+
+  el.style.visibility = 'visible';
+  el.style.left = '0px';
+
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+  ]);
+
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  el.style.visibility = 'hidden';
+  el.style.left = '-9999px';
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgH = (canvas.height * pageW) / canvas.width;
+
+  if (imgH <= pageH) {
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, imgH);
+  } else {
+    let y = 0;
+    while (y < imgH) {
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = Math.min((pageH / imgH) * canvas.height, canvas.height - (y / imgH) * canvas.height);
+      const ctx = sliceCanvas.getContext('2d')!;
+      ctx.drawImage(canvas, 0, (y / imgH) * canvas.height, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+      if (y > 0) pdf.addPage();
+      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, (sliceCanvas.height * pageW) / canvas.width);
+      y += pageH;
+    }
+  }
+
+  pdf.save(`${invoice.invoiceNumber}.pdf`);
+}
+
+// ── Invoice print template (hidden off-screen) ────────────────────────────────
+
+function InvoicePrintTemplate({ invoice, id }: { invoice: Invoice; id: string }) {
+  const fmt = (n: number) => formatCurrency(n);
+  return (
+    <div
+      id={id}
+      style={{
+        position: 'fixed',
+        left: '-9999px',
+        top: 0,
+        visibility: 'hidden',
+        width: '794px',
+        minHeight: '1123px',
+        background: '#ffffff',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '13px',
+        color: '#1e293b',
+        padding: '56px 56px 48px 56px',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+        <div>
+          <div style={{ fontSize: '26px', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.5px', lineHeight: 1 }}>
+            NEXORA EXPRESS
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>nexorashipping.com</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>{invoice.shipFromAddress}, {invoice.shipFromCity}, {invoice.shipFromCountry}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '32px', fontWeight: '800', color: '#1e3a5f', letterSpacing: '-1px', lineHeight: 1 }}>INVOICE</div>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>{invoice.invoiceNumber}</div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Date: {formatDate(invoice.invoiceDate)}</div>
+          {invoice.dueDate && <div style={{ fontSize: '11px', color: '#64748b' }}>Due: {formatDate(invoice.dueDate)}</div>}
+          <div style={{ marginTop: '6px' }}>
+            <span style={{
+              fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
+              background: invoice.status === 'PAID' ? '#dcfce7' : invoice.status === 'OVERDUE' ? '#fee2e2' : '#f1f5f9',
+              color: invoice.status === 'PAID' ? '#166534' : invoice.status === 'OVERDUE' ? '#dc2626' : '#475569',
+            }}>
+              {invoice.status}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Navy rule ── */}
+      <div style={{ borderTop: '3px solid #1e3a5f', marginBottom: '28px' }} />
+
+      {/* ── From / Bill To ── */}
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '28px' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '9px', fontWeight: '700', color: '#94a3b8', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '8px' }}>From</div>
+          <div style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a' }}>{invoice.shipFromName}</div>
+          <div style={{ color: '#475569', fontSize: '12px', marginTop: '2px' }}>{invoice.shipFromAddress}</div>
+          <div style={{ color: '#475569', fontSize: '12px' }}>{invoice.shipFromCity}, {invoice.shipFromCountry}</div>
+        </div>
+        <div style={{ flex: 1, background: '#f8fafc', borderRadius: '8px', padding: '14px 16px' }}>
+          <div style={{ fontSize: '9px', fontWeight: '700', color: '#94a3b8', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '8px' }}>Bill To</div>
+          <div style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a' }}>{invoice.billToName}</div>
+          <div style={{ color: '#475569', fontSize: '12px', marginTop: '2px' }}>{invoice.billToAddress}</div>
+          <div style={{ color: '#475569', fontSize: '12px' }}>{invoice.billToCity}, {invoice.billToCountry}</div>
+          {invoice.billToEmail && <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>{invoice.billToEmail}</div>}
+          {invoice.billToPhone && <div style={{ color: '#94a3b8', fontSize: '11px' }}>{invoice.billToPhone}</div>}
+        </div>
+      </div>
+
+      {/* ── Meta row ── */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '28px' }}>
+        {[
+          { label: 'Invoice Date', value: formatDate(invoice.invoiceDate) },
+          { label: 'Due Date', value: invoice.dueDate ? formatDate(invoice.dueDate) : '—' },
+          { label: 'Payment Terms', value: invoice.paymentTerms || '—' },
+          { label: 'Currency', value: invoice.currency },
+        ].map(({ label, value }) => (
+          <div key={label} style={{ flex: 1, background: '#f8fafc', borderRadius: '6px', padding: '10px 12px' }}>
+            <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>{label}</div>
+            <div style={{ fontWeight: '600', fontSize: '12px', color: '#0f172a' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Order ref ── */}
+      {invoice.orderRef && (
+        <div style={{ background: '#eff6ff', borderRadius: '6px', padding: '8px 14px', marginBottom: '20px', fontSize: '12px', color: '#1d4ed8' }}>
+          Order Reference: <strong style={{ fontFamily: 'monospace' }}>{invoice.orderRef.orderNumber}</strong>
+        </div>
+      )}
+
+      {/* ── Line items table ── */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+        <thead>
+          <tr style={{ background: '#1e3a5f' }}>
+            {['Description', 'Qty', 'Unit Price', 'Amount'].map((h, i) => (
+              <th key={h} style={{
+                padding: '10px 14px', fontSize: '10px', fontWeight: '700', color: '#ffffff',
+                textAlign: i === 0 ? 'left' : 'right',
+                letterSpacing: '0.5px', textTransform: 'uppercase',
+                width: i === 0 ? 'auto' : i === 1 ? '60px' : '110px',
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {invoice.items.map((item, i) => (
+            <tr key={item.id} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+              <td style={{ padding: '10px 14px', fontSize: '12px', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>{item.description}</td>
+              <td style={{ padding: '10px 14px', fontSize: '12px', color: '#334155', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{item.quantity}</td>
+              <td style={{ padding: '10px 14px', fontSize: '12px', color: '#334155', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{fmt(item.unitPrice)}</td>
+              <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: '700', color: '#0f172a', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{fmt(item.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* ── Totals ── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '32px' }}>
+        <div style={{ width: '260px' }}>
+          {[
+            { label: 'Subtotal', value: fmt(invoice.subtotal), bold: false },
+            ...(invoice.taxRate > 0 ? [{ label: `Tax (${invoice.taxRate}%)`, value: fmt(invoice.taxAmount), bold: false }] : []),
+            ...(invoice.shippingCost > 0 ? [{ label: 'Shipping', value: fmt(invoice.shippingCost), bold: false }] : []),
+          ].map(({ label, value }) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', padding: '3px 0' }}>
+              <span>{label}</span><span>{value}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '800', color: '#0f172a', borderTop: '2px solid #1e3a5f', marginTop: '8px', paddingTop: '10px' }}>
+            <span>Total ({invoice.currency})</span>
+            <span style={{ color: '#1e3a5f' }}>{fmt(invoice.total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+        {invoice.paymentTerms && (
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>
+            <strong>Payment Terms:</strong> {invoice.paymentTerms}
+          </div>
+        )}
+        {invoice.notes && (
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>{invoice.notes}</div>
+        )}
+        <div style={{ marginTop: '24px', fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>
+          Thank you for your business · Nexora Express Logistics · nexorashipping.com
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Invoice Detail Modal ───────────────────────────────────────────────────────
 
 function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const subtotal = invoice.subtotal;
   const cfg = STATUS_CONFIG[invoice.status];
+  const [downloading, setDownloading] = useState(false);
+  const templateId = `inv-print-${invoice.id}`;
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadInvoicePDF(invoice, templateId);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <>
+      <InvoicePrintTemplate invoice={invoice} id={templateId} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-base font-bold text-slate-900 font-mono">{invoice.invoiceNumber}</h2>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
-                {cfg.label}
-              </span>
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-bold text-slate-900 font-mono">{invoice.invoiceNumber}</h2>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+                  {cfg.label}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(invoice.invoiceDate)}</p>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(invoice.invoiceDate)}</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 disabled:opacity-50 transition-colors"
+              >
+                {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {downloading ? 'Generating…' : 'Download PDF'}
+              </button>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
@@ -234,9 +453,10 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
               <p className="text-sm text-amber-800">{invoice.notes}</p>
             </div>
           )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
