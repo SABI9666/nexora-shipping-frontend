@@ -27,6 +27,51 @@ const features = [
     desc: 'Automated pricing based on weight, dimensions, and destination in seconds.',
     href: '/auth/login',
   },
+'use client';
+ 
+ 
+ 
+import { useState, useCallback } from 'react';
+ 
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+ 
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+ 
+import api from '@/lib/api';
+ 
+import { formatCurrency, formatDate } from '@/lib/utils';
+ 
+import { useAuth } from '@/hooks/useAuth';
+ 
+import { Invoice, InvoiceItem, InvoiceStatus, InvoiceCurrency, Order } from '@/types';
+ 
+import {
+  Plus, FileText, Trash2, Eye, X, AlertCircle, CheckCircle,
+  Loader2, ChevronDown, ChevronUp, Search, Receipt, Download,
+} from 'lucide-react';
+ 
+ 
+ 
+// ── Constants ────────────────────────────────────────────────────────────────
+ 
+ 
+ 
+const CURRENCIES: InvoiceCurrency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR'];
+ 
+ 
+ 
+const STATUS_CONFIG: Record<InvoiceStatus, { label: string; bg: string; color: string }> = {
+  DRAFT:     { label: 'Draft',     bg: 'bg-slate-100',  color: 'text-slate-600' },
+  SENT:      { label: 'Sent',      bg: 'bg-blue-50',    color: 'text-blue-600'  },
+  PAID:      { label: 'Paid',      bg: 'bg-green-50',   color: 'text-green-700' },
+  OVERDUE:   { label: 'Overdue',   bg: 'bg-red-50',     color: 'text-red-600'   },
+  CANCELLED: { label: 'Cancelled', bg: 'bg-slate-100',  color: 'text-slate-400' },
+};
+ 
+ 
+ 
+const PAYMENT_TERMS_OPTIONS = [
+  'Net 7', 'Net 15', 'Net 30', 'Net 60', 'Due on Receipt', 'Custom',
 ];
 
 const stats = [
@@ -34,6 +79,22 @@ const stats = [
   { value: '150+', label: 'Countries Served' },
   { value: '2M+', label: 'Shipments Processed' },
   { value: '24/7', label: 'Support Available' },
+ 
+ 
+ 
+const COUNTRIES = [
+  { code: 'US', name: 'United States' }, { code: 'GB', name: 'United Kingdom' },
+  { code: 'CA', name: 'Canada' },        { code: 'AU', name: 'Australia' },
+  { code: 'DE', name: 'Germany' },       { code: 'FR', name: 'France' },
+  { code: 'IN', name: 'India' },         { code: 'CN', name: 'China' },
+  { code: 'JP', name: 'Japan' },         { code: 'SG', name: 'Singapore' },
+  { code: 'AE', name: 'UAE' },           { code: 'NL', name: 'Netherlands' },
+  { code: 'IT', name: 'Italy' },         { code: 'ES', name: 'Spain' },
+  { code: 'BR', name: 'Brazil' },        { code: 'ZA', name: 'South Africa' },
+  { code: 'NG', name: 'Nigeria' },       { code: 'KE', name: 'Kenya' },
+  { code: 'MX', name: 'Mexico' },        { code: 'PK', name: 'Pakistan' },
+  { code: 'BD', name: 'Bangladesh' },    { code: 'PH', name: 'Philippines' },
+  { code: 'MY', name: 'Malaysia' },      { code: 'TH', name: 'Thailand' },
 ];
 
 const benefits = [
@@ -43,6 +104,117 @@ const benefits = [
 ];
 
 export default function HomePage() {
+ 
+ 
+ 
+// ── Types ─────────────────────────────────────────────────────────────────────
+ 
+ 
+ 
+interface LineItem {
+  description: string;
+  quantity: string;
+  unitPrice: string;
+}
+ 
+ 
+ 
+interface InvoiceForm {
+  orderId: string;
+  billToName: string;
+  billToAddress: string;
+  billToCity: string;
+  billToCountry: string;
+  billToEmail: string;
+  billToPhone: string;
+  shipFromName: string;
+  shipFromAddress: string;
+  shipFromCity: string;
+  shipFromCountry: string;
+  currency: InvoiceCurrency;
+  taxRate: string;
+  shippingCost: string;
+  paymentTerms: string;
+  notes: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  items: LineItem[];
+}
+ 
+ 
+ 
+const emptyForm = (): InvoiceForm => ({
+  orderId: '',
+  billToName: '',
+  billToAddress: '',
+  billToCity: '',
+  billToCountry: 'US',
+  billToEmail: '',
+  billToPhone: '',
+  shipFromName: 'Nexora Express',
+  shipFromAddress: '1 Nexora Way',
+  shipFromCity: 'London',
+  shipFromCountry: 'GB',
+  currency: 'USD',
+  taxRate: '0',
+  shippingCost: '0',
+  paymentTerms: 'Net 30',
+  notes: '',
+  dueDate: '',
+  status: 'DRAFT',
+  items: [{ description: 'Shipping Service', quantity: '1', unitPrice: '' }],
+});
+ 
+ 
+ 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+ 
+ 
+ 
+function calcSubtotal(items: LineItem[]) {
+  return items.reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0), 0);
+}
+ 
+ 
+ 
+function calcTax(subtotal: number, taxRate: string) {
+  return subtotal * ((parseFloat(taxRate) || 0) / 100);
+}
+ 
+ 
+ 
+// ── PDF Generation ────────────────────────────────────────────────────────────
+ 
+ 
+ 
+async function downloadInvoicePDF(invoice: Invoice) {
+  const { default: jsPDF } = await import('jspdf');
+  const { default: html2canvas } = await import('html2canvas');
+ 
+  const el = document.getElementById(`invoice-print-${invoice.id}`);
+  if (!el) return;
+ 
+  el.style.display = 'block';
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true });
+  el.style.display = 'none';
+ 
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const w = pdf.internal.pageSize.getWidth();
+  const h = (canvas.height * w) / canvas.width;
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
+  pdf.save(`${invoice.invoiceNumber}.pdf`);
+}
+ 
+ 
+ 
+// ── Invoice Detail Modal ───────────────────────────────────────────────────────
+ 
+ 
+ 
+function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const subtotal = invoice.subtotal;
+  const cfg = STATUS_CONFIG[invoice.status];
+ 
   return (
     <div className="min-h-screen bg-[#0A0F2C] text-white">
 
@@ -64,6 +236,31 @@ export default function HomePage() {
             <Link href="/auth/register" className="bg-brand-red text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-brand-red-dark transition-colors">
               Get Started
             </Link>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+ 
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-bold text-slate-900 font-mono">{invoice.invoiceNumber}</h2>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+                {cfg.label}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(invoice.invoiceDate)}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => downloadInvoicePDF(invoice)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5"
+            >
+              <Download className="w-4 h-4" /> Download PDF
+            </button>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </nav>
@@ -106,9 +303,110 @@ export default function HomePage() {
               <div key={label} className="text-center">
                 <div className="text-2xl md:text-3xl font-bold text-white mb-1">{value}</div>
                 <div className="text-xs text-slate-500 uppercase tracking-wider">{label}</div>
+ 
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+ 
+          {/* From / To */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">From</p>
+              <p className="font-semibold text-slate-800 text-sm">{invoice.shipFromName}</p>
+              <p className="text-sm text-slate-600">{invoice.shipFromAddress}</p>
+              <p className="text-sm text-slate-600">{invoice.shipFromCity}, {invoice.shipFromCountry}</p>
+            </div>
+            <div className="bg-brand-navy/5 rounded-xl p-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Bill To</p>
+              <p className="font-semibold text-slate-800 text-sm">{invoice.billToName}</p>
+              <p className="text-sm text-slate-600">{invoice.billToAddress}</p>
+              <p className="text-sm text-slate-600">{invoice.billToCity}, {invoice.billToCountry}</p>
+              {invoice.billToEmail && <p className="text-xs text-slate-400 mt-1">{invoice.billToEmail}</p>}
+              {invoice.billToPhone && <p className="text-xs text-slate-400">{invoice.billToPhone}</p>}
+            </div>
+          </div>
+ 
+          {/* Meta */}
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-xs text-slate-400 mb-0.5">Invoice Date</p>
+              <p className="font-semibold text-slate-800">{formatDate(invoice.invoiceDate)}</p>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-xs text-slate-400 mb-0.5">Due Date</p>
+              <p className="font-semibold text-slate-800">{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</p>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-xs text-slate-400 mb-0.5">Payment Terms</p>
+              <p className="font-semibold text-slate-800">{invoice.paymentTerms || '—'}</p>
+            </div>
+          </div>
+ 
+          {invoice.orderRef && (
+            <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg">
+              <Receipt className="w-4 h-4" />
+              Linked to order <span className="font-mono font-semibold">{invoice.orderRef.orderNumber}</span>
+            </div>
+          )}
+ 
+          {/* Line items */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Line Items</p>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Description</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Qty</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Unit Price</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {invoice.items.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-800">{item.description}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{item.quantity}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.unitPrice)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+ 
+          {/* Totals */}
+          <div className="flex justify-end">
+            <div className="w-64 space-y-1.5 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              {invoice.taxRate > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Tax ({invoice.taxRate}%)</span>
+                  <span>{formatCurrency(invoice.taxAmount)}</span>
+                </div>
+              )}
+              {invoice.shippingCost > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Shipping</span>
+                  <span>{formatCurrency(invoice.shippingCost)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
+                <span>Total ({invoice.currency})</span>
+                <span className="text-brand-navy text-base">{formatCurrency(invoice.total)}</span>
               </div>
             ))}
+            </div>
           </div>
+ 
+          {invoice.notes && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-amber-700 mb-1">Notes</p>
+              <p className="text-sm text-amber-800">{invoice.notes}</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -133,7 +431,120 @@ export default function HomePage() {
                 <p className="text-slate-400 text-sm leading-relaxed">{desc}</p>
               </Link>
             ))}
+      </div>
+    </div>
+  );
+}
+ 
+ 
+ 
+// ── Create Invoice Modal ───────────────────────────────────────────────────────
+ 
+ 
+ 
+function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [form, setForm] = useState<InvoiceForm>(emptyForm());
+  const [error, setError] = useState('');
+  const [showShipFrom, setShowShipFrom] = useState(false);
+ 
+  const { data: ordersData } = useQuery({
+    queryKey: ['orders-for-invoice'],
+    queryFn: () => api.get('/orders?limit=100').then((r) => r.data.data as Order[]),
+  });
+  const orders: Order[] = ordersData ?? [];
+ 
+  const mutation = useMutation({
+    mutationFn: () => api.post('/invoices', {
+      orderId: form.orderId || undefined,
+      billToName: form.billToName,
+      billToAddress: form.billToAddress,
+      billToCity: form.billToCity,
+      billToCountry: form.billToCountry,
+      billToEmail: form.billToEmail || undefined,
+      billToPhone: form.billToPhone || undefined,
+      shipFromName: form.shipFromName,
+      shipFromAddress: form.shipFromAddress,
+      shipFromCity: form.shipFromCity,
+      shipFromCountry: form.shipFromCountry,
+      currency: form.currency,
+      taxRate: parseFloat(form.taxRate) || 0,
+      shippingCost: parseFloat(form.shippingCost) || 0,
+      paymentTerms: form.paymentTerms || undefined,
+      notes: form.notes || undefined,
+      dueDate: form.dueDate || undefined,
+      status: form.status,
+      items: form.items.map((i) => ({
+        description: i.description,
+        quantity: parseFloat(i.quantity) || 1,
+        unitPrice: parseFloat(i.unitPrice) || 0,
+      })),
+    }),
+    onSuccess: () => { onSuccess(); onClose(); },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message || 'Failed to create invoice.');
+    },
+  });
+ 
+  const set = (key: keyof InvoiceForm, val: string) =>
+    setForm((f) => ({ ...f, [key]: val }));
+ 
+  const setItem = (idx: number, key: keyof LineItem, val: string) =>
+    setForm((f) => {
+      const items = [...f.items];
+      items[idx] = { ...items[idx], [key]: val };
+      return { ...f, items };
+    });
+ 
+  const addItem = () =>
+    setForm((f) => ({ ...f, items: [...f.items, { description: '', quantity: '1', unitPrice: '' }] }));
+ 
+  const removeItem = (idx: number) =>
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+ 
+  // Auto-fill Bill To when an order is selected
+  const handleOrderSelect = useCallback((orderId: string) => {
+    setForm((f) => ({ ...f, orderId }));
+    if (!orderId) return;
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    setForm((f) => ({
+      ...f,
+      orderId,
+      billToCity: order.deliveryCity,
+      billToCountry: order.deliveryCountry,
+      billToAddress: order.deliveryAddress,
+      items: [
+        {
+          description: `Shipping: ${order.packageDescription}`,
+          quantity: '1',
+          unitPrice: String(order.price ?? ''),
+        },
+      ],
+    }));
+  }, [orders]);
+ 
+  const subtotal = calcSubtotal(form.items);
+  const tax = calcTax(subtotal, form.taxRate);
+  const shipping = parseFloat(form.shippingCost) || 0;
+  const total = subtotal + tax + shipping;
+ 
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy';
+  const labelCls = 'block text-xs font-semibold text-slate-600 mb-1';
+ 
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+ 
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Create Invoice</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Manual invoice entry — number auto-generated</p>
           </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </section>
 
@@ -145,13 +556,135 @@ export default function HomePage() {
               <div key={title} className="flex gap-4">
                 <div className="w-10 h-10 bg-brand-red/15 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
                   <Icon className="w-5 h-5 text-brand-red" />
+ 
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+ 
+          {/* ── Row 1: Order + Status + Currency ── */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-3 sm:col-span-1">
+              <label className={labelCls}>
+                Link to Order <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <select
+                value={form.orderId}
+                onChange={(e) => handleOrderSelect(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">— Select order —</option>
+                {orders.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.orderNumber} · {o.deliveryCity} · {o.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Status</label>
+              <select value={form.status} onChange={(e) => set('status', e.target.value)} className={inputCls}>
+                {(Object.keys(STATUS_CONFIG) as InvoiceStatus[]).map((s) => (
+                  <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Currency</label>
+              <select value={form.currency} onChange={(e) => set('currency', e.target.value)} className={inputCls}>
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+ 
+          {/* ── Dates ── */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Invoice Date</label>
+              <input type="date" disabled value={new Date().toISOString().split('T')[0]}
+                className={`${inputCls} bg-slate-50 text-slate-400`} />
+            </div>
+            <div>
+              <label className={labelCls}>Due Date <span className="text-slate-400 font-normal">(optional)</span></label>
+              <input type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+ 
+          {/* ── Bill To ── */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Bill To</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className={labelCls}>Full Name / Company *</label>
+                <input value={form.billToName} onChange={(e) => set('billToName', e.target.value)}
+                  placeholder="John Smith / Acme Corp" className={inputCls} />
+              </div>
+              <div className="col-span-2">
+                <label className={labelCls}>Address *</label>
+                <input value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)}
+                  placeholder="123 Main Street" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>City *</label>
+                <input value={form.billToCity} onChange={(e) => set('billToCity', e.target.value)}
+                  placeholder="New York" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Country *</label>
+                <select value={form.billToCountry} onChange={(e) => set('billToCountry', e.target.value)} className={inputCls}>
+                  {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Email</label>
+                <input type="email" value={form.billToEmail} onChange={(e) => set('billToEmail', e.target.value)}
+                  placeholder="client@example.com" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Phone</label>
+                <input value={form.billToPhone} onChange={(e) => set('billToPhone', e.target.value)}
+                  placeholder="+1 555 000 0000" className={inputCls} />
+              </div>
+            </div>
+          </div>
+ 
+          {/* ── Ship From (collapsible) ── */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowShipFrom((v) => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-700"
+            >
+              {showShipFrom ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              Ship From (Nexora Express) — click to edit
+            </button>
+            {showShipFrom && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className={labelCls}>Company Name</label>
+                  <input value={form.shipFromName} onChange={(e) => set('shipFromName', e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Address</label>
+                  <input value={form.shipFromAddress} onChange={(e) => set('shipFromAddress', e.target.value)} className={inputCls} />
                 </div>
                 <div>
                   <h3 className="text-white font-semibold mb-2">{title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed">{desc}</p>
+                  <label className={labelCls}>City</label>
+                  <input value={form.shipFromCity} onChange={(e) => set('shipFromCity', e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Country</label>
+                  <select value={form.shipFromCountry} onChange={(e) => set('shipFromCountry', e.target.value)} className={inputCls}>
+                    {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                  </select>
                 </div>
               </div>
             ))}
+            )}
           </div>
         </div>
       </section>
@@ -170,8 +703,117 @@ export default function HomePage() {
             />
             <button type="submit" className="bg-brand-red text-white px-6 py-3.5 rounded-xl font-semibold hover:bg-brand-red-dark transition-colors whitespace-nowrap">
               Track
+ 
+          {/* ── Line Items ── */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Line Items *</p>
+            <div className="space-y-2">
+              {form.items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-6">
+                    {idx === 0 && <label className={labelCls}>Description</label>}
+                    <input
+                      value={item.description}
+                      onChange={(e) => setItem(idx, 'description', e.target.value)}
+                      placeholder="Shipping service / Item description"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    {idx === 0 && <label className={labelCls}>Qty</label>}
+                    <input
+                      type="number" min="0.01" step="0.01"
+                      value={item.quantity}
+                      onChange={(e) => setItem(idx, 'quantity', e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    {idx === 0 && <label className={labelCls}>Unit Price ({form.currency})</label>}
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={item.unitPrice}
+                      onChange={(e) => setItem(idx, 'unitPrice', e.target.value)}
+                      placeholder="0.00"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className={`col-span-1 ${idx === 0 ? 'pt-5' : ''} flex justify-end`}>
+                    {form.items.length > 1 && (
+                      <button type="button" onClick={() => removeItem(idx)}
+                        className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg transition-colors">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={addItem}
+              className="mt-3 flex items-center gap-1.5 text-xs text-brand-navy hover:text-brand-navy/70 font-semibold">
+              <Plus className="w-3.5 h-3.5" /> Add line item
             </button>
           </form>
+          </div>
+ 
+          {/* ── Financial ── */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Tax Rate (%)</label>
+              <input type="number" min="0" max="100" step="0.1"
+                value={form.taxRate} onChange={(e) => set('taxRate', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Shipping Cost ({form.currency})</label>
+              <input type="number" min="0" step="0.01"
+                value={form.shippingCost} onChange={(e) => set('shippingCost', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+ 
+          {/* Total preview */}
+          <div className="bg-slate-50 rounded-xl p-4">
+            <div className="flex justify-end">
+              <div className="w-56 space-y-1 text-sm">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(subtotal)}</span>
+                </div>
+                {(parseFloat(form.taxRate) || 0) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tax ({form.taxRate}%)</span>
+                    <span>{formatCurrency(tax)}</span>
+                  </div>
+                )}
+                {(parseFloat(form.shippingCost) || 0) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Shipping</span>
+                    <span>{formatCurrency(shipping)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2">
+                  <span>Total ({form.currency})</span>
+                  <span className="text-brand-navy">{formatCurrency(total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+ 
+          {/* ── Payment Terms + Notes ── */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Payment Terms</label>
+              <select value={form.paymentTerms} onChange={(e) => set('paymentTerms', e.target.value)} className={inputCls}>
+                <option value="">— None —</option>
+                {PAYMENT_TERMS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Notes <span className="text-slate-400 font-normal">(optional)</span></label>
+            <textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)}
+              placeholder="Additional notes, bank details, thank you message…"
+              className={`${inputCls} resize-none`} />
+          </div>
         </div>
       </section>
 
@@ -189,9 +831,343 @@ export default function HomePage() {
             <Link href="/auth/admin" className="hover:text-white transition-colors flex items-center gap-1 border-l border-white/10 pl-6">
               <Shield className="w-3 h-3" /> Admin
             </Link>
+ 
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-400">Invoice number auto-generated on save</span>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending || !form.billToName || !form.billToAddress || form.items.some((i) => !i.description)}
+              className="px-5 py-2 text-sm font-semibold bg-brand-navy text-white rounded-xl hover:bg-brand-navy/90 disabled:opacity-50 flex items-center gap-2"
+            >
+              {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {mutation.isPending ? 'Creating…' : 'Create Invoice'}
+            </button>
           </div>
         </div>
       </footer>
+      </div>
     </div>
+  );
+}
+ 
+ 
+ 
+// ── Main Page ─────────────────────────────────────────────────────────────────
+ 
+ 
+ 
+export default function InvoicesPage() {
+  const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
+ 
+  const { data, isLoading } = useQuery({
+    queryKey: ['invoices', statusFilter, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '50' });
+      if (statusFilter) params.set('status', statusFilter);
+      if (search) params.set('search', search);
+      return api.get(`/invoices?${params}`).then((r) => r.data);
+    },
+  });
+ 
+  const invoices: Invoice[] = data?.data ?? [];
+ 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/invoices/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+  });
+ 
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: InvoiceStatus }) =>
+      api.patch(`/invoices/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+  });
+ 
+  return (
+    <DashboardLayout>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="page-title">Invoices</h1>
+          <p className="page-subtitle">Create and manage shipping invoices</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> New Invoice
+        </button>
+      </div>
+ 
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search invoice number, client name…"
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | '')}
+          className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white"
+        >
+          <option value="">All Statuses</option>
+          {(Object.keys(STATUS_CONFIG) as InvoiceStatus[]).map((s) => (
+            <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+          ))}
+        </select>
+      </div>
+ 
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-brand-navy border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : invoices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <FileText className="w-12 h-12 mb-3 opacity-40" />
+            <p className="font-medium text-slate-500">No invoices yet</p>
+            <p className="text-xs mt-1">Click <span className="font-semibold">New Invoice</span> to create one</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Invoice #</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Order</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Due</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {invoices.map((inv) => {
+                  const cfg = STATUS_CONFIG[inv.status];
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3.5 font-mono font-semibold text-brand-navy">{inv.invoiceNumber}</td>
+                      <td className="px-4 py-3.5">
+                        <p className="font-semibold text-slate-800 truncate max-w-[140px]">{inv.billToName}</p>
+                        {inv.billToEmail && <p className="text-xs text-slate-400 truncate">{inv.billToEmail}</p>}
+                      </td>
+                      <td className="px-4 py-3.5 hidden md:table-cell">
+                        {inv.orderRef ? (
+                          <span className="text-xs font-mono bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                            {inv.orderRef.orderNumber}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-500 hidden sm:table-cell">{formatDate(inv.invoiceDate)}</td>
+                      <td className="px-4 py-3.5 hidden lg:table-cell">
+                        {inv.dueDate ? (
+                          <span className={new Date(inv.dueDate) < new Date() && inv.status !== 'PAID' ? 'text-red-500 font-semibold' : 'text-slate-500'}>
+                            {formatDate(inv.dueDate)}
+                          </span>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-bold text-slate-900">
+                        {formatCurrency(inv.total)}
+                        <span className="text-xs font-normal text-slate-400 ml-1">{inv.currency}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {isAdmin ? (
+                          <select
+                            value={inv.status}
+                            onChange={(e) => updateStatusMutation.mutate({ id: inv.id, status: e.target.value as InvoiceStatus })}
+                            className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-navy/30 ${cfg.bg} ${cfg.color}`}
+                          >
+                            {(Object.keys(STATUS_CONFIG) as InvoiceStatus[]).map((s) => (
+                              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+                            {cfg.label}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => setViewInvoice(inv)}
+                            className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => { if (confirm(`Delete invoice ${inv.invoiceNumber}?`)) deleteMutation.mutate(inv.id); }}
+                            disabled={deleteMutation.isPending}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+ 
+      {/* Summary bar */}
+      {invoices.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
+          <span>{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
+          <span>·</span>
+          <span>Total outstanding: <span className="font-semibold text-slate-800">
+            {formatCurrency(invoices.filter((i) => i.status !== 'PAID' && i.status !== 'CANCELLED').reduce((s, i) => s + i.total, 0))}
+          </span></span>
+          <span>·</span>
+          <span>Paid: <span className="font-semibold text-green-700">
+            {formatCurrency(invoices.filter((i) => i.status === 'PAID').reduce((s, i) => s + i.total, 0))}
+          </span></span>
+        </div>
+      )}
+ 
+      {/* Modals */}
+      {showCreate && (
+        <CreateInvoiceModal
+          onClose={() => setShowCreate(false)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['invoices'] })}
+        />
+      )}
+      {viewInvoice && (
+        <InvoiceDetailModal invoice={viewInvoice} onClose={() => setViewInvoice(null)} />
+      )}
+ 
+      {/* ── Hidden PDF Print Templates ── */}
+      {invoices.map((inv) => (
+        <div
+          key={inv.id}
+          id={`invoice-print-${inv.id}`}
+          style={{ display: 'none', position: 'fixed', top: 0, left: 0, width: '794px', background: 'white', padding: '48px', fontFamily: 'sans-serif', zIndex: -1 }}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 32 }}>
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', letterSpacing: -1 }}>NEXORA EXPRESS</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>nexorashipping.com</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#1e3a5f' }}>INVOICE</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginTop: 4 }}>{inv.invoiceNumber}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>Date: {formatDate(inv.invoiceDate)}</div>
+              {inv.dueDate && <div style={{ fontSize: 11, color: '#64748b' }}>Due: {formatDate(inv.dueDate)}</div>}
+            </div>
+          </div>
+ 
+          {/* Divider */}
+          <div style={{ borderTop: '3px solid #1e3a5f', marginBottom: 24 }} />
+ 
+          {/* From / Bill To */}
+          <div style={{ display: 'flex', gap: 32, marginBottom: 28 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: 1, marginBottom: 8 }}>FROM</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{inv.shipFromName}</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{inv.shipFromAddress}</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{inv.shipFromCity}, {inv.shipFromCountry}</div>
+            </div>
+            <div style={{ flex: 1, background: '#f8fafc', borderRadius: 8, padding: '12px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: 1, marginBottom: 8 }}>BILL TO</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{inv.billToName}</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{inv.billToAddress}</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{inv.billToCity}, {inv.billToCountry}</div>
+              {inv.billToEmail && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{inv.billToEmail}</div>}
+              {inv.billToPhone && <div style={{ fontSize: 11, color: '#94a3b8' }}>{inv.billToPhone}</div>}
+            </div>
+          </div>
+ 
+          {/* Order ref */}
+          {inv.orderRef && (
+            <div style={{ background: '#eff6ff', borderRadius: 6, padding: '8px 14px', marginBottom: 20, fontSize: 12, color: '#1d4ed8' }}>
+              Order Reference: <strong>{inv.orderRef.orderNumber}</strong>
+            </div>
+          )}
+ 
+          {/* Line items table */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f', color: 'white' }}>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Description</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 600, width: 60 }}>Qty</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 600, width: 100 }}>Unit Price</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 600, width: 100 }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inv.items.map((item, i) => (
+                <tr key={item.id} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: '#334155', borderBottom: '1px solid #e2e8f0' }}>{item.description}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: '#334155', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{item.quantity}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: '#334155', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{formatCurrency(item.unitPrice)}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, fontWeight: 600, color: '#0f172a', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{formatCurrency(item.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+ 
+          {/* Totals */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 28 }}>
+            <div style={{ width: 240 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', padding: '4px 0' }}>
+                <span>Subtotal</span><span>{formatCurrency(inv.subtotal)}</span>
+              </div>
+              {inv.taxRate > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', padding: '4px 0' }}>
+                  <span>Tax ({inv.taxRate}%)</span><span>{formatCurrency(inv.taxAmount)}</span>
+                </div>
+              )}
+              {inv.shippingCost > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', padding: '4px 0' }}>
+                  <span>Shipping</span><span>{formatCurrency(inv.shippingCost)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#0f172a', borderTop: '2px solid #1e3a5f', marginTop: 6, paddingTop: 8 }}>
+                <span>Total ({inv.currency})</span><span style={{ color: '#1e3a5f' }}>{formatCurrency(inv.total)}</span>
+              </div>
+            </div>
+          </div>
+ 
+          {/* Footer */}
+          {(inv.paymentTerms || inv.notes) && (
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              {inv.paymentTerms && <div style={{ fontSize: 11, color: '#64748b' }}><strong>Payment Terms:</strong> {inv.paymentTerms}</div>}
+              {inv.notes && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{inv.notes}</div>}
+            </div>
+          )}
+          <div style={{ marginTop: 32, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+            Thank you for your business — Nexora Express Logistics
+          </div>
+        </div>
+      ))}
+ 
+    </DashboardLayout>
   );
 }
