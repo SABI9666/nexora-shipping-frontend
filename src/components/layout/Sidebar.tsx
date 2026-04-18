@@ -8,6 +8,7 @@ import {
   Truck,
   FileText,
   MapPin,
+  Receipt,
   LogOut,
   Settings,
   Users,
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/orders', label: 'Orders', icon: Package },
   { href: '/shipments', label: 'Shipments', icon: Truck },
   { href: '/documents', label: 'Documents', icon: FileText },
+  { href: '/invoices', label: 'Invoices', icon: Receipt },
   { href: '/track', label: 'Track Package', icon: MapPin },
 ];
 

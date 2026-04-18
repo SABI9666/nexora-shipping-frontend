@@ -102,6 +102,51 @@ export interface Document {
   createdAt: string;
 }
 
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+export type InvoiceCurrency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR';
+
+export interface InvoiceItem {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  invoiceDate: string;
+  dueDate?: string;
+  billToName: string;
+  billToAddress: string;
+  billToCity: string;
+  billToCountry: string;
+  billToEmail?: string;
+  billToPhone?: string;
+  shipFromName: string;
+  shipFromAddress: string;
+  shipFromCity: string;
+  shipFromCountry: string;
+  currency: InvoiceCurrency;
+  subtotal: number;
+  taxRate: number;
+  taxAmount: number;
+  shippingCost: number;
+  total: number;
+  paymentTerms?: string;
+  notes?: string;
+  orderId?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  items: InvoiceItem[];
+  orderRef?: { id: string; orderNumber: string; status?: string };
+  user?: Partial<User>;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message?: string;
