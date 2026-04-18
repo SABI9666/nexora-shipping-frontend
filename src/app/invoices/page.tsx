@@ -291,9 +291,31 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
   const subtotal = invoice.subtotal;
   const cfg = STATUS_CONFIG[invoice.status];
   const templateId = `inv-print-${invoice.id}`;
+  const [downloading, setDownloading] = useState(false);
 
   const handleDownload = () => {
     downloadInvoicePDF(invoice, templateId);
+  };
+
+  const handleDownloadWord = async () => {
+    setDownloading(true);
+    try {
+      const response = await api.get(`/invoices/${invoice.id}/download/word`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${invoice.invoiceNumber}.docx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download Word file. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -316,11 +338,21 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleDownload}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 transition-colors"
-              >
-                <Download className="w-4 h-4" /> Download PDF
-              </button>
+  onClick={handleDownload}
+  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 transition-colors"
+>
+  <Download className="w-4 h-4" /> Download PDF
+</button>
+<button
+  onClick={handleDownloadWord}
+  disabled={downloading}
+  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 rounded-xl hover:bg-emerald-50 transition-colors disabled:opacity-50"
+>
+  {downloading
+    ? <Loader2 className="w-4 h-4 animate-spin" />
+    : <FileText className="w-4 h-4" />}
+  {downloading ? 'Downloading…' : 'Download Word'}
+</button>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
                 <X className="w-4 h-4" />
               </button>
