@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
@@ -107,44 +107,28 @@ function calcTax(subtotal: number, taxRate: string) {
 
 // ── PDF download ──────────────────────────────────────────────────────────────
 
-async function downloadInvoicePDF(invoice: Invoice, templateId: string) {
+function downloadInvoicePDF(invoice: Invoice, templateId: string) {
   const el = document.getElementById(templateId);
   if (!el) return;
 
-  el.style.visibility = 'visible';
-  el.style.left = '0px';
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) return;
 
-  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
-
-  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-  el.style.visibility = 'hidden';
-  el.style.left = '-9999px';
-
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const imgH = (canvas.height * pageW) / canvas.width;
-
-  if (imgH <= pageH) {
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, imgH);
-  } else {
-    let y = 0;
-    while (y < imgH) {
-      const sliceCanvas = document.createElement('canvas');
-      sliceCanvas.width = canvas.width;
-      sliceCanvas.height = Math.min((pageH / imgH) * canvas.height, canvas.height - (y / imgH) * canvas.height);
-      const ctx = sliceCanvas.getContext('2d')!;
-      ctx.drawImage(canvas, 0, (y / imgH) * canvas.height, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
-      if (y > 0) pdf.addPage();
-      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, (sliceCanvas.height * pageW) / canvas.width);
-      y += pageH;
-    }
-  }
-
-  pdf.save(`${invoice.invoiceNumber}.pdf`);
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8"/>
+    <title>${invoice.invoiceNumber}</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #fff; }
+      @media print {
+        @page { size: A4; margin: 0; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    </style>
+  </head><body>${el.outerHTML}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
 // ── Invoice print template (hidden off-screen) ────────────────────────────────
@@ -306,16 +290,10 @@ function InvoicePrintTemplate({ invoice, id }: { invoice: Invoice; id: string })
 function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const subtotal = invoice.subtotal;
   const cfg = STATUS_CONFIG[invoice.status];
-  const [downloading, setDownloading] = useState(false);
   const templateId = `inv-print-${invoice.id}`;
 
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      await downloadInvoicePDF(invoice, templateId);
-    } finally {
-      setDownloading(false);
-    }
+  const handleDownload = () => {
+    downloadInvoicePDF(invoice, templateId);
   };
 
   return (
@@ -339,11 +317,9 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
             <div className="flex items-center gap-2">
               <button
                 onClick={handleDownload}
-                disabled={downloading}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 transition-colors"
               >
-                {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {downloading ? 'Generating…' : 'Download PDF'}
+                <Download className="w-4 h-4" /> Download PDF
               </button>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
                 <X className="w-4 h-4" />
