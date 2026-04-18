@@ -291,9 +291,31 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
   const subtotal = invoice.subtotal;
   const cfg = STATUS_CONFIG[invoice.status];
   const templateId = `inv-print-${invoice.id}`;
+  const [downloading, setDownloading] = useState(false);
 
   const handleDownload = () => {
     downloadInvoicePDF(invoice, templateId);
+  };
+
+  const handleDownloadWord = async () => {
+    setDownloading(true);
+    try {
+      const response = await api.get(`/invoices/${invoice.id}/download/word`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${invoice.invoiceNumber}.docx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download Word file. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
