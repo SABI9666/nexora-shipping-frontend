@@ -293,9 +293,11 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
   const templateId = `inv-print-${invoice.id}`;
   const [downloading, setDownloading] = useState(false);
 
-  const handleDownload = () => {
-    downloadInvoicePDF(invoice, templateId);
-  };
+ import { downloadDocx } from '@/lib/downloadDocx';
+// ...
+const handleDownload = () => {
+  downloadDocx(`/invoices/${invoice.id}/docx`, `${invoice.invoiceNumber}.doc`);
+};
 
   const handleDownloadWord = async () => {
     setDownloading(true);
