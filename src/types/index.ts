@@ -147,6 +147,50 @@ export interface Invoice {
   user?: Partial<User>;
 }
 
+export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
+
+export interface QuotationItem {
+  id: string;
+  quotationId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string;
+  status: QuotationStatus;
+  quotationDate: string;
+  validUntil?: string;
+  billToName: string;
+  billToAddress: string;
+  billToCity: string;
+  billToCountry: string;
+  billToEmail?: string;
+  billToPhone?: string;
+  shipFromName: string;
+  shipFromAddress: string;
+  shipFromCity: string;
+  shipFromCountry: string;
+  currency: InvoiceCurrency;
+  subtotal: number;
+  taxRate: number;
+  taxAmount: number;
+  shippingCost: number;
+  total: number;
+  terms?: string;
+  notes?: string;
+  orderId?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  items: QuotationItem[];
+  orderRef?: { id: string; orderNumber: string; status?: string };
+  user?: Partial<User>;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message?: string;
