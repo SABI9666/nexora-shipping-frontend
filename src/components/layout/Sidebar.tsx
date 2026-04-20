@@ -7,6 +7,7 @@ import {
   Package,
   Truck,
   FileText,
+  FileSignature,
   MapPin,
   Receipt,
   LogOut,
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/orders', label: 'Orders', icon: Package },
   { href: '/shipments', label: 'Shipments', icon: Truck },
   { href: '/documents', label: 'Documents', icon: FileText },
+  { href: '/quotations', label: 'Quotations', icon: FileSignature },
   { href: '/invoices', label: 'Invoices', icon: Receipt },
   { href: '/track', label: 'Track Package', icon: MapPin },
 ];
