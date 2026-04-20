@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Loader2, Package } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { X, Loader2, Package, Users } from 'lucide-react';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { Account, ItemMaster } from '@/types';
 
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
@@ -35,11 +37,44 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState('');
   const [confirmMode, setConfirmMode] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState('');
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { pickupCountry: 'US', deliveryCountry: 'US' },
   });
+
+  // Fetch masters for dropdowns — gracefully handles 404 when backend not yet deployed
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts-for-order'],
+    queryFn: () => api.get('/accounts?limit=500').then((r) => r.data.data as Account[]).catch(() => [] as Account[]),
+  });
+  const { data: items } = useQuery({
+    queryKey: ['items-for-order'],
+    queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
+  });
+
+  const handleAccountSelect = (id: string) => {
+    setSelectedAccountId(id);
+    if (!id) return;
+    const a = (accounts ?? []).find((x) => x.id === id);
+    if (!a) return;
+    const addr = a.deliveryAddress || a.address || '';
+    if (addr) setValue('deliveryAddress', addr, { shouldValidate: true });
+    if (a.place) setValue('deliveryCity', a.place, { shouldValidate: true });
+    const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
+    setValue('specialInstructions', note);
+  };
+
+  const handleItemSelect = (id: string) => {
+    setSelectedItemId(id);
+    if (!id) return;
+    const it = (items ?? []).find((x) => x.id === id);
+    if (!it) return;
+    const note = `Customer: ${it.code} — ${it.name}${it.phone ? ' · ' + it.phone : ''}`;
+    setValue('specialInstructions', note);
+  };
 
   const weight = watch('weight') || 0;
   const fromCountry = watch('pickupCountry') || 'US';
@@ -73,7 +108,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-brand-navy rounded-lg flex items-center justify-center">
@@ -113,6 +147,57 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
             {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
+
+            {/* Customer picker (from Masters) */}
+            <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-4 h-4 text-brand-navy" />
+                <h3 className="text-sm font-semibold text-brand-navy uppercase tracking-wide">
+                  Customer (optional — auto-fills fields)
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Account Master</label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => handleAccountSelect(e.target.value)}
+                    className="form-input"
+                  >
+                    <option value="">— Select account —</option>
+                    {(accounts ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.code} · {a.name}{a.mobile1 ? ` · ${a.mobile1}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(accounts ?? []).length === 0 && (
+                    <p className="text-xs text-slate-400 mt-1">No accounts yet — add one in Account Master.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="form-label">Item Master</label>
+                  <select
+                    value={selectedItemId}
+                    onChange={(e) => handleItemSelect(e.target.value)}
+                    className="form-input"
+                  >
+                    <option value="">— Select item —</option>
+                    {(items ?? []).map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(items ?? []).length === 0 && (
+                    <p className="text-xs text-slate-400 mt-1">No items yet — add one in Item Master.</p>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Selecting an Account fills delivery address + city. Customer reference saved in notes.
+              </p>
+            </div>
 
             {/* Pickup */}
             <div>
