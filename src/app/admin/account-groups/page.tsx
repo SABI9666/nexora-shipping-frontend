@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
-import { AccountGroup, AccountGroupType } from '@/types';
-import { Plus, Trash2, Pencil, X, AlertCircle, CheckCircle, Loader2, Save } from 'lucide-react';
+import { AccountGroup, AccountGroupType, ItemMaster } from '@/types';
+import { Plus, Trash2, Pencil, X, AlertCircle, Loader2, Save } from 'lucide-react';
 
 const GROUP_TYPES: { value: AccountGroupType; label: string }[] = [
   { value: 'ASSET', label: 'Asset' },
@@ -41,6 +41,19 @@ function EditorModal({
   const [form, setForm] = useState<FormState>(initial);
   const [error, setError] = useState('');
   const isEdit = !!form.id;
+
+  // Item Master list — for pre-fill dropdown
+  const { data: items } = useQuery({
+    queryKey: ['items-for-masters'],
+    queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
+  });
+
+  const handleItemPrefill = (id: string) => {
+    if (!id) return;
+    const it = (items ?? []).find((x) => x.id === id);
+    if (!it) return;
+    setForm((f) => ({ ...f, code: it.code, name: it.name }));
+  };
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -82,6 +95,24 @@ function EditorModal({
               <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
             </div>
           )}
+
+          {!isEdit && (items ?? []).length > 0 && (
+            <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-lg p-3">
+              <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-1 block">
+                Pre-fill from Item Master
+              </label>
+              <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
+                <option value="">— Select an item —</option>
+                {(items ?? []).map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.code} · {it.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">Copies code + name into the fields below.</p>
+            </div>
+          )}
+
           <div>
             <label className={labelCls}>Code *</label>
             <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}
