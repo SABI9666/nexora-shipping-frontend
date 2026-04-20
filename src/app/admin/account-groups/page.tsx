@@ -1,0 +1,227 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import api from '@/lib/api';
+import { AccountGroup, AccountGroupType } from '@/types';
+import { Plus, Trash2, Pencil, X, AlertCircle, CheckCircle, Loader2, Save } from 'lucide-react';
+
+const GROUP_TYPES: { value: AccountGroupType; label: string }[] = [
+  { value: 'ASSET', label: 'Asset' },
+  { value: 'LIABILITIES', label: 'Liabilities' },
+  { value: 'PL', label: 'P & L A/c' },
+  { value: 'TRADING', label: 'Trading A/c' },
+];
+
+interface FormState {
+  id?: string;
+  code: string;
+  name: string;
+  groupType: AccountGroupType;
+  printOrder: string;
+}
+
+const emptyForm = (): FormState => ({
+  code: '',
+  name: '',
+  groupType: 'ASSET',
+  printOrder: '0',
+});
+
+function EditorModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: FormState;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<FormState>(initial);
+  const [error, setError] = useState('');
+  const isEdit = !!form.id;
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const payload = {
+        code: form.code,
+        name: form.name,
+        groupType: form.groupType,
+        printOrder: parseInt(form.printOrder) || 0,
+      };
+      return isEdit
+        ? api.patch(`/account-groups/${form.id}`, payload)
+        : api.post('/account-groups', payload);
+    },
+    onSuccess: () => { onSaved(); onClose(); },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message || 'Failed to save.');
+    },
+  });
+
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy';
+  const labelCls = 'block text-xs font-semibold text-slate-600 mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-900">
+            {isEdit ? 'Edit Account Group' : 'New Account Group'}
+          </h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Code *</label>
+            <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}
+              placeholder="022" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Name *</label>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="SUNDRY DEBTORS" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Group *</label>
+            <select value={form.groupType}
+              onChange={(e) => setForm({ ...form, groupType: e.target.value as AccountGroupType })}
+              className={inputCls}>
+              {GROUP_TYPES.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Print Order</label>
+            <input type="number" min="0" value={form.printOrder}
+              onChange={(e) => setForm({ ...form, printOrder: e.target.value })}
+              className={inputCls} />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
+            Close (Esc)
+          </button>
+          <button onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !form.code || !form.name}
+            className="px-5 py-2 text-sm font-semibold bg-brand-navy text-white rounded-xl hover:bg-brand-navy/90 disabled:opacity-50 flex items-center gap-2">
+            {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save (F12)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const GROUP_LABEL: Record<AccountGroupType, string> = {
+  ASSET: 'Asset',
+  LIABILITIES: 'Liabilities',
+  PL: 'P & L A/c',
+  TRADING: 'Trading A/c',
+};
+
+export default function AccountGroupsPage() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<FormState | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['account-groups'],
+    queryFn: () => api.get('/account-groups').then((r) => r.data.data as AccountGroup[]),
+  });
+
+  const groups = data ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/account-groups/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['account-groups'] }),
+  });
+
+  const onSaved = () => queryClient.invalidateQueries({ queryKey: ['account-groups'] });
+
+  return (
+    <DashboardLayout>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="page-title">Account Group Master</h1>
+          <p className="page-subtitle">Categories like Sundry Debtors, Bank, Capital, etc.</p>
+        </div>
+        <button
+          onClick={() => setEditing(emptyForm())}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90"
+        >
+          <Plus className="w-4 h-4" /> New Group
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 text-brand-navy animate-spin" />
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="py-16 text-center text-slate-400">No account groups yet.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Code</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Account Group</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Group</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Print Order</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {groups.map((g) => (
+                <tr key={g.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-mono font-semibold text-brand-navy">{g.code}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-800">{g.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{GROUP_LABEL[g.groupType]}</td>
+                  <td className="px-4 py-3 text-right text-slate-600">{g.printOrder}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => setEditing({
+                          id: g.id, code: g.code, name: g.name,
+                          groupType: g.groupType, printOrder: String(g.printOrder),
+                        })}
+                        className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => { if (confirm(`Delete ${g.name}?`)) deleteMutation.mutate(g.id); }}
+                        disabled={deleteMutation.isPending}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {editing && (
+        <EditorModal initial={editing} onClose={() => setEditing(null)} onSaved={onSaved} />
+      )}
+    </DashboardLayout>
+  );
+}

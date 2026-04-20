@@ -191,6 +191,85 @@ export interface Quotation {
   user?: Partial<User>;
 }
 
+// ── Masters ──────────────────────────────────────────────────────────────────
+
+export type AccountGroupType = 'ASSET' | 'LIABILITIES' | 'PL' | 'TRADING';
+
+export interface AccountGroup {
+  id: string;
+  code: string;
+  name: string;
+  groupType: AccountGroupType;
+  printOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerGroup {
+  id: string;
+  code: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubAccount {
+  id: string;
+  code: string;
+  name: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Account {
+  id: string;
+  code: string;
+  name: string;
+  arabicName?: string;
+  accountGroupId: string;
+  destination?: string;
+  address?: string;
+  road?: string;
+  place?: string;
+  route?: string;
+  subRoute?: string;
+  phone1?: string;
+  mobile1?: string;
+  mobile2?: string;
+  email?: string;
+  financeEmail?: string;
+  contactPerson?: string;
+  acContactPerson?: string;
+  acMobileNo?: string;
+  rep?: string;
+  rep2?: string;
+  opBalance: number;
+  opBalanceType: 'Credit' | 'Debit';
+  narration?: string;
+  paymentTerms?: string;
+  trn?: string;
+  creditDays: number;
+  creditInvoices: number;
+  creditLimit: number;
+  customerGroupId?: string;
+  deliveryAddress?: string;
+  createdAt: string;
+  updatedAt: string;
+  accountGroup?: Pick<AccountGroup, 'id' | 'code' | 'name' | 'groupType'>;
+  customerGroup?: Pick<CustomerGroup, 'id' | 'code' | 'name'>;
+  subAccounts?: SubAccount[];
+}
+
+export interface ItemMaster {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message?: string;
