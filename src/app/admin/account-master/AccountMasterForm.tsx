@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Account, AccountGroup, CustomerGroup } from '@/types';
-import { Plus, X, AlertCircle, Loader2, Save, Search } from 'lucide-react';
+import { Account, AccountGroup, CustomerGroup, ItemMaster } from '@/types';
+import { Plus, X, AlertCircle, Loader2, Save } from 'lucide-react';
 
 export interface AccountForm {
   id?: string;
@@ -116,6 +116,10 @@ export function AccountMasterForm({
     queryKey: ['customer-groups'],
     queryFn: () => api.get('/customer-groups').then((r) => r.data.data as CustomerGroup[]),
   });
+  const { data: items } = useQuery({
+    queryKey: ['items-for-masters'],
+    queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
+  });
 
   useEffect(() => {
     if (!form.accountGroupId && groups && groups.length > 0) {
@@ -123,6 +127,18 @@ export function AccountMasterForm({
       setForm((f) => ({ ...f, accountGroupId: debtors.id }));
     }
   }, [groups, form.accountGroupId]);
+
+  const handleItemPrefill = (id: string) => {
+    if (!id) return;
+    const it = (items ?? []).find((x) => x.id === id);
+    if (!it) return;
+    setForm((f) => ({
+      ...f,
+      code: it.code,
+      name: it.name,
+      mobile1: it.phone ?? f.mobile1,
+    }));
+  };
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -199,6 +215,24 @@ export function AccountMasterForm({
           {error && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          {/* Pre-fill from Item Master */}
+          {!isEdit && (items ?? []).length > 0 && (
+            <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
+              <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-2 block">
+                Pre-fill from Item Master
+              </label>
+              <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
+                <option value="">— Select an item —</option>
+                {(items ?? []).map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">Copies code, name, and phone (into Mobile 1) into the fields below.</p>
             </div>
           )}
 
