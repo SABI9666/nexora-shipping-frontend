@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
+import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Quotation, QuotationStatus } from '@/types';
@@ -28,16 +29,11 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await api.get(`/quotations/${quotation.id}/docx`, { responseType: 'blob' });
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${quotation.quotationNumber}.doc`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
+      await downloadDocx(
+        `/quotations/${quotation.id}/download/word`,
+        `${quotation.quotationNumber}.docx`,
+      );
+    } catch {
       alert('Failed to download Word document.');
     } finally {
       setDownloading(false);
