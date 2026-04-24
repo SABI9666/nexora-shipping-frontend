@@ -222,6 +222,18 @@ export interface SubAccount {
   updatedAt: string;
 }
 
+export interface Salesperson {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Account {
   id: string;
   code: string;
@@ -244,6 +256,8 @@ export interface Account {
   acMobileNo?: string;
   rep?: string;
   rep2?: string;
+  repId?: string;
+  rep2Id?: string;
   opBalance: number;
   opBalanceType: 'Credit' | 'Debit';
   narration?: string;
@@ -258,6 +272,8 @@ export interface Account {
   updatedAt: string;
   accountGroup?: Pick<AccountGroup, 'id' | 'code' | 'name' | 'groupType'>;
   customerGroup?: Pick<CustomerGroup, 'id' | 'code' | 'name'>;
+  salesperson?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'>;
+  salesperson2?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'>;
   subAccounts?: SubAccount[];
 }
 

@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Account, AccountGroup, CustomerGroup, ItemMaster } from '@/types';
-import { Plus, X, AlertCircle, Loader2, Save } from 'lucide-react';
+import { Account, AccountGroup, CustomerGroup, ItemMaster, Salesperson } from '@/types';
+import { Plus, X, AlertCircle, Loader2, Save, Phone, Mail } from 'lucide-react';
 
 export interface AccountForm {
   id?: string;
@@ -28,6 +28,8 @@ export interface AccountForm {
   acMobileNo: string;
   rep: string;
   rep2: string;
+  repId: string;
+  rep2Id: string;
   opBalance: string;
   opBalanceType: 'Credit' | 'Debit';
   narration: string;
@@ -49,6 +51,7 @@ export const emptyAccountForm = (): AccountForm => ({
   email: '', financeEmail: '',
   contactPerson: '', acContactPerson: '', acMobileNo: '',
   rep: '', rep2: '',
+  repId: '', rep2Id: '',
   opBalance: '0', opBalanceType: 'Credit',
   narration: '', paymentTerms: '',
   trn: '',
@@ -81,6 +84,8 @@ export function accountToForm(a: Account): AccountForm {
     acMobileNo: a.acMobileNo ?? '',
     rep: a.rep ?? '',
     rep2: a.rep2 ?? '',
+    repId: a.repId ?? '',
+    rep2Id: a.rep2Id ?? '',
     opBalance: String(a.opBalance),
     opBalanceType: a.opBalanceType,
     narration: a.narration ?? '',
@@ -93,6 +98,27 @@ export function accountToForm(a: Account): AccountForm {
     deliveryAddress: a.deliveryAddress ?? '',
     subAccounts: (a.subAccounts ?? []).map((s) => ({ code: s.code, name: s.name })),
   };
+}
+
+function SalespersonCard({ sp }: { sp: Salesperson }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+      <span className="font-semibold text-brand-navy">{sp.code} · {sp.name}</span>
+      {sp.phone && (
+        <span className="inline-flex items-center gap-1">
+          <Phone className="w-3 h-3 text-slate-400" /> {sp.phone}
+        </span>
+      )}
+      {sp.email && (
+        <span className="inline-flex items-center gap-1">
+          <Mail className="w-3 h-3 text-slate-400" /> {sp.email}
+        </span>
+      )}
+      {!sp.phone && !sp.email && (
+        <span className="text-slate-400 italic">No contact info — edit in Salesperson Master</span>
+      )}
+    </div>
+  );
 }
 
 export function AccountMasterForm({
@@ -120,6 +146,17 @@ export function AccountMasterForm({
     queryKey: ['items-for-masters'],
     queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
   });
+  const { data: salespersons } = useQuery({
+    queryKey: ['salespersons-for-account'],
+    queryFn: () =>
+      api
+        .get('/salespersons?limit=500&active=true')
+        .then((r) => r.data.data as Salesperson[])
+        .catch(() => [] as Salesperson[]),
+  });
+
+  const selectedRep = (salespersons ?? []).find((s) => s.id === form.repId) || null;
+  const selectedRep2 = (salespersons ?? []).find((s) => s.id === form.rep2Id) || null;
 
   useEffect(() => {
     if (!form.accountGroupId && groups && groups.length > 0) {
@@ -138,6 +175,29 @@ export function AccountMasterForm({
       name: it.name,
       mobile1: it.phone ?? f.mobile1,
     }));
+  };
+
+  const handleRepSelect = (id: string) => {
+    if (!id) {
+      setForm((f) => ({ ...f, repId: '', rep: '' }));
+      return;
+    }
+    const sp = (salespersons ?? []).find((x) => x.id === id);
+    setForm((f) => ({ ...f, repId: id, rep: sp ? sp.name : f.rep }));
+  };
+
+  const handleRep2Select = (id: string) => {
+    if (!id) {
+      setForm((f) => ({ ...f, rep2Id: '', rep2: '' }));
+      return;
+    }
+    const sp = (salespersons ?? []).find((x) => x.id === id);
+    setForm((f) => ({ ...f, rep2Id: id, rep2: sp ? sp.name : f.rep2 }));
+  };
+
+  const repOptionLabel = (sp: Salesperson) => {
+    const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
+    return `${sp.code} · ${sp.name}${extras ? ` · ${extras}` : ''}`;
   };
 
   const mutation = useMutation({
@@ -163,6 +223,8 @@ export function AccountMasterForm({
         acMobileNo: form.acMobileNo || undefined,
         rep: form.rep || undefined,
         rep2: form.rep2 || undefined,
+        repId: form.repId || undefined,
+        rep2Id: form.rep2Id || undefined,
         opBalance: parseFloat(form.opBalance) || 0,
         opBalanceType: form.opBalanceType,
         narration: form.narration || undefined,
@@ -351,14 +413,6 @@ export function AccountMasterForm({
                 <input value={form.acMobileNo} onChange={(e) => set('acMobileNo', e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Rep</label>
-                <input value={form.rep} onChange={(e) => set('rep', e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Rep 2</label>
-                <input value={form.rep2} onChange={(e) => set('rep2', e.target.value)} className={inputCls} />
-              </div>
-              <div>
                 <label className={labelCls}>Customer Group</label>
                 <select value={form.customerGroupId}
                   onChange={(e) => set('customerGroupId', e.target.value)} className={inputCls}>
@@ -369,6 +423,69 @@ export function AccountMasterForm({
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Salesperson (REP) */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Salesperson (REP) · Contact &amp; Email</p>
+              <a
+                href="/admin/salesperson-master"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-brand-navy hover:text-brand-navy/70 font-semibold"
+              >
+                Manage Salespersons →
+              </a>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>REP (Primary)</label>
+                <select
+                  value={form.repId}
+                  onChange={(e) => handleRepSelect(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">— Select a salesperson —</option>
+                  {(salespersons ?? []).map((sp) => (
+                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
+                  ))}
+                </select>
+                {selectedRep && <SalespersonCard sp={selectedRep} />}
+                <input
+                  value={form.rep}
+                  onChange={(e) => set('rep', e.target.value)}
+                  placeholder="Or type rep name manually"
+                  className={`${inputCls} mt-2`}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>REP 2 (Secondary)</label>
+                <select
+                  value={form.rep2Id}
+                  onChange={(e) => handleRep2Select(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">— Select a salesperson —</option>
+                  {(salespersons ?? []).map((sp) => (
+                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
+                  ))}
+                </select>
+                {selectedRep2 && <SalespersonCard sp={selectedRep2} />}
+                <input
+                  value={form.rep2}
+                  onChange={(e) => set('rep2', e.target.value)}
+                  placeholder="Or type rep name manually"
+                  className={`${inputCls} mt-2`}
+                />
+              </div>
+            </div>
+            {(salespersons ?? []).length === 0 && (
+              <p className="text-xs text-slate-400 mt-2">
+                No salespersons defined yet. Add them in the Salesperson Master first — each entry supports
+                contact number and email.
+              </p>
+            )}
           </div>
 
           {/* Financial */}
