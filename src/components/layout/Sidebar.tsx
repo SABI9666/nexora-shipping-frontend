@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   UserSquare,
+  UserCog,
   Layers,
   BookUser,
   Shield,
@@ -36,6 +37,7 @@ const navItems = [
 const mastersItems = [
   { href: '/admin/account-groups', label: 'Account Group Master', icon: Layers },
   { href: '/admin/account-master', label: 'Account Master', icon: UserSquare },
+  { href: '/admin/salesperson-master', label: 'Salesperson (REP) Master', icon: UserCog },
   { href: '/admin/item-master', label: 'Item Master', icon: BookUser },
 ];
 
