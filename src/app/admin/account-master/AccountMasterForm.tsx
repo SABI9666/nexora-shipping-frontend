@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Account, AccountGroup, CustomerGroup, ItemMaster, Salesperson } from '@/types';
-import { Plus, X, AlertCircle, Loader2, Save } from 'lucide-react';
+import { Plus, X, AlertCircle, Loader2, Save, Phone, Mail } from 'lucide-react';
 
 export interface AccountForm {
   id?: string;
@@ -100,6 +100,27 @@ export function accountToForm(a: Account): AccountForm {
   };
 }
 
+function SalespersonCard({ sp }: { sp: Salesperson }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+      <span className="font-semibold text-brand-navy">{sp.code} · {sp.name}</span>
+      {sp.phone && (
+        <span className="inline-flex items-center gap-1">
+          <Phone className="w-3 h-3 text-slate-400" /> {sp.phone}
+        </span>
+      )}
+      {sp.email && (
+        <span className="inline-flex items-center gap-1">
+          <Mail className="w-3 h-3 text-slate-400" /> {sp.email}
+        </span>
+      )}
+      {!sp.phone && !sp.email && (
+        <span className="text-slate-400 italic">No contact info — edit in Salesperson Master</span>
+      )}
+    </div>
+  );
+}
+
 export function AccountMasterForm({
   initial,
   onClose,
@@ -133,6 +154,9 @@ export function AccountMasterForm({
         .then((r) => r.data.data as Salesperson[])
         .catch(() => [] as Salesperson[]),
   });
+
+  const selectedRep = (salespersons ?? []).find((s) => s.id === form.repId) || null;
+  const selectedRep2 = (salespersons ?? []).find((s) => s.id === form.rep2Id) || null;
 
   useEffect(() => {
     if (!form.accountGroupId && groups && groups.length > 0) {
@@ -169,6 +193,11 @@ export function AccountMasterForm({
     }
     const sp = (salespersons ?? []).find((x) => x.id === id);
     setForm((f) => ({ ...f, rep2Id: id, rep2: sp ? sp.name : f.rep2 }));
+  };
+
+  const repOptionLabel = (sp: Salesperson) => {
+    const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
+    return `${sp.code} · ${sp.name}${extras ? ` · ${extras}` : ''}`;
   };
 
   const mutation = useMutation({
@@ -399,7 +428,7 @@ export function AccountMasterForm({
           {/* Salesperson (REP) */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Salesperson (REP)</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Salesperson (REP) · Contact &amp; Email</p>
               <a
                 href="/admin/salesperson-master"
                 target="_blank"
@@ -419,11 +448,10 @@ export function AccountMasterForm({
                 >
                   <option value="">— Select a salesperson —</option>
                   {(salespersons ?? []).map((sp) => (
-                    <option key={sp.id} value={sp.id}>
-                      {sp.code} · {sp.name}{sp.phone ? ` · ${sp.phone}` : ''}
-                    </option>
+                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
                   ))}
                 </select>
+                {selectedRep && <SalespersonCard sp={selectedRep} />}
                 <input
                   value={form.rep}
                   onChange={(e) => set('rep', e.target.value)}
@@ -440,11 +468,10 @@ export function AccountMasterForm({
                 >
                   <option value="">— Select a salesperson —</option>
                   {(salespersons ?? []).map((sp) => (
-                    <option key={sp.id} value={sp.id}>
-                      {sp.code} · {sp.name}{sp.phone ? ` · ${sp.phone}` : ''}
-                    </option>
+                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
                   ))}
                 </select>
+                {selectedRep2 && <SalespersonCard sp={selectedRep2} />}
                 <input
                   value={form.rep2}
                   onChange={(e) => set('rep2', e.target.value)}
@@ -455,7 +482,8 @@ export function AccountMasterForm({
             </div>
             {(salespersons ?? []).length === 0 && (
               <p className="text-xs text-slate-400 mt-2">
-                No salespersons defined yet. Add them in the Salesperson Master first.
+                No salespersons defined yet. Add them in the Salesperson Master first — each entry supports
+                contact number and email.
               </p>
             )}
           </div>
