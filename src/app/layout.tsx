@@ -14,9 +14,13 @@ export const metadata: Metadata = {
     capable: true,
     title: 'Nexora Shipping',
     statusBarStyle: 'black-translucent',
+    startupImage: '/logo.png',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
     apple: '/logo.png',
   },
 };
