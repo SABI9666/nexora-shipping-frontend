@@ -5,10 +5,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, Package, Users } from 'lucide-react';
+import { X, Loader2, Package, Users, UserCog } from 'lucide-react';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import { Account, ItemMaster } from '@/types';
+import { Account, ItemMaster, Salesperson } from '@/types';
 
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
@@ -39,6 +39,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   const [createdOrderId, setCreatedOrderId] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
+  const [selectedRepId, setSelectedRepId] = useState('');
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -54,6 +55,16 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     queryKey: ['items-for-order'],
     queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
   });
+  const { data: salespersons } = useQuery({
+    queryKey: ['salespersons-for-order'],
+    queryFn: () =>
+      api
+        .get('/salespersons?limit=500&active=true')
+        .then((r) => r.data.data as Salesperson[])
+        .catch(() => [] as Salesperson[]),
+  });
+
+  const selectedRep = (salespersons ?? []).find((s) => s.id === selectedRepId) || null;
 
   const handleAccountSelect = (id: string) => {
     setSelectedAccountId(id);
@@ -65,6 +76,10 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     if (a.place) setValue('deliveryCity', a.place, { shouldValidate: true });
     const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
     setValue('specialInstructions', note);
+    // Auto-pick the account's primary salesperson if one is set
+    if (a.repId && !selectedRepId) {
+      setSelectedRepId(a.repId);
+    }
   };
 
   const handleItemSelect = (id: string) => {
@@ -85,7 +100,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   const onSubmit = async (data: FormData) => {
     setError('');
     try {
-      const response = await api.post('/orders', data);
+      const payload = { ...data, repId: selectedRepId || undefined };
+      const response = await api.post('/orders', payload);
       const orderId = response.data.data.id;
       setCreatedOrderId(orderId);
       setConfirmMode(true);
@@ -195,8 +211,56 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                 </div>
               </div>
               <p className="text-xs text-slate-500 mt-2">
-                Selecting an Account fills delivery address + city. Customer reference saved in notes.
+                Selecting an Account fills delivery address + city, and pre-selects its default sales rep below.
               </p>
+            </div>
+
+            {/* Sales Rep picker */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <UserCog className="w-4 h-4 text-amber-700" />
+                  <h3 className="text-sm font-semibold text-amber-800 uppercase tracking-wide">
+                    Sales Rep (optional)
+                  </h3>
+                </div>
+                <a
+                  href="/admin/salesperson-master"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-amber-700 hover:underline font-semibold"
+                >
+                  Manage Reps →
+                </a>
+              </div>
+              <select
+                value={selectedRepId}
+                onChange={(e) => setSelectedRepId(e.target.value)}
+                className="form-input"
+              >
+                <option value="">— No sales rep —</option>
+                {(salespersons ?? []).map((sp) => {
+                  const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
+                  return (
+                    <option key={sp.id} value={sp.id}>
+                      {sp.code} · {sp.name}{extras ? ` · ${extras}` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedRep && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 bg-white border border-amber-200 rounded-lg px-3 py-2">
+                  <span className="font-semibold text-amber-800">{selectedRep.code} · {selectedRep.name}</span>
+                  {selectedRep.phone && <span>📞 {selectedRep.phone}</span>}
+                  {selectedRep.email && <span>✉️ {selectedRep.email}</span>}
+                </div>
+              )}
+              {(salespersons ?? []).length === 0 && (
+                <p className="text-xs text-amber-700 mt-2">
+                  No salespersons defined yet — add them in the Salesperson Master. You can also leave this empty
+                  and assign a rep later from the order detail page.
+                </p>
+              )}
             </div>
 
             {/* Pickup */}
