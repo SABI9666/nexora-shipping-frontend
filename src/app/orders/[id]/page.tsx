@@ -9,7 +9,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import api from '@/lib/api';
 import { formatCurrency, formatDate, formatDateTime, formatFileSize, SHIPMENT_STATUS_CONFIG } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { Order, Shipment, Document, OrderStatus } from '@/types';
+import { Order, Shipment, Document, OrderStatus, Salesperson } from '@/types';
 
 type OrderDetail = Omit<Order, 'shipment' | 'documents'> & {
   shipment?: Shipment;
@@ -18,7 +18,7 @@ type OrderDetail = Omit<Order, 'shipment' | 'documents'> & {
 import {
   ArrowLeft, Package, MapPin, Truck, FileText, Download,
   Edit2, Trash2, CheckCircle, AlertCircle, X, Loader2,
-  Calendar, Weight, DollarSign, Hash, User,
+  Calendar, Weight, DollarSign, Hash, User, UserCog, Phone, Mail,
 } from 'lucide-react';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -41,7 +41,6 @@ const MIME_ICONS: Record<string, string> = {
 
 const ORDER_STATUSES: OrderStatus[] = ['DRAFT', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'];
 
-// ── Edit Modal ────────────────────────────────────────────────────────────────
 interface EditOrderModalProps {
   order: Order;
   onClose: () => void;
@@ -55,8 +54,20 @@ function EditOrderModal({ order, onClose, onSuccess }: EditOrderModalProps) {
     weight: String(order.weight),
     declaredValue: String(order.declaredValue ?? ''),
     specialInstructions: order.specialInstructions ?? '',
+    repId: order.repId ?? '',
   });
   const [error, setError] = useState('');
+
+  const { data: salespersons } = useQuery({
+    queryKey: ['salespersons-for-order-edit'],
+    queryFn: () =>
+      api
+        .get('/salespersons?limit=500&active=true')
+        .then((r) => r.data.data as Salesperson[])
+        .catch(() => [] as Salesperson[]),
+  });
+
+  const selectedRep = (salespersons ?? []).find((s) => s.id === form.repId) || null;
 
   const mutation = useMutation({
     mutationFn: () => api.patch(`/orders/${order.id}`, {
@@ -65,6 +76,8 @@ function EditOrderModal({ order, onClose, onSuccess }: EditOrderModalProps) {
       weight: parseFloat(form.weight),
       declaredValue: form.declaredValue ? parseFloat(form.declaredValue) : undefined,
       specialInstructions: form.specialInstructions || undefined,
+      // empty string clears the rep on the backend
+      repId: form.repId,
     }),
     onSuccess: () => { onSuccess(); onClose(); },
     onError: (err: { response?: { data?: { message?: string } } }) => {
@@ -98,6 +111,50 @@ function EditOrderModal({ order, onClose, onSuccess }: EditOrderModalProps) {
             <select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value as OrderStatus }))} className="form-input w-full">
               {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+
+          {/* Sales Rep — admins can add or change after the order is created */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="form-label !mb-0 flex items-center gap-1.5">
+                <UserCog className="w-3.5 h-3.5 text-amber-700" />
+                Sales Rep
+              </label>
+              <a
+                href="/admin/salesperson-master"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-amber-700 hover:underline font-semibold"
+              >
+                Manage Reps
+              </a>
+            </div>
+            <select
+              value={form.repId}
+              onChange={(e) => setForm(f => ({ ...f, repId: e.target.value }))}
+              className="form-input w-full"
+            >
+              <option value="">— No sales rep —</option>
+              {(salespersons ?? []).map((sp) => {
+                const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
+                return (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.code} · {sp.name}{extras ? ` · ${extras}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+            {selectedRep && (
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <span className="font-semibold text-amber-800">{selectedRep.code} · {selectedRep.name}</span>
+                {selectedRep.phone && (
+                  <span className="inline-flex items-center gap-1"><Phone className="w-3 h-3" /> {selectedRep.phone}</span>
+                )}
+                {selectedRep.email && (
+                  <span className="inline-flex items-center gap-1"><Mail className="w-3 h-3" /> {selectedRep.email}</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -163,7 +220,6 @@ function EditOrderModal({ order, onClose, onSuccess }: EditOrderModalProps) {
   );
 }
 
-// ── Delete Confirm ────────────────────────────────────────────────────────────
 interface DeleteConfirmProps {
   orderNumber: string;
   onConfirm: () => void;
@@ -201,7 +257,6 @@ function DeleteConfirm({ orderNumber, onConfirm, onCancel, isPending }: DeleteCo
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -258,10 +313,10 @@ export default function OrderDetailPage() {
   const docs: Document[] = order.documents ?? [];
   const shipment = order.shipment;
   const shipmentCfg = shipment ? SHIPMENT_STATUS_CONFIG[shipment.status as keyof typeof SHIPMENT_STATUS_CONFIG] : null;
+  const rep = order.salesperson;
 
   return (
     <DashboardLayout>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Link href="/orders" className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
@@ -295,10 +350,8 @@ export default function OrderDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Route card */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
               <MapPin className="w-4 h-4" /> Shipping Route
@@ -317,7 +370,6 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          {/* Package card */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Package className="w-4 h-4" /> Package Details
@@ -346,7 +398,6 @@ export default function OrderDetailPage() {
             )}
           </div>
 
-          {/* Shipment card */}
           {shipment && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -391,7 +442,6 @@ export default function OrderDetailPage() {
             </div>
           )}
 
-          {/* Documents */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -440,8 +490,46 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        {/* Right column — summary */}
         <div className="space-y-5">
+          {/* Sales Rep card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                <UserCog className="w-4 h-4" /> Sales Rep
+              </h2>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="text-xs text-brand-navy hover:underline font-semibold"
+                >
+                  {rep || order.repName ? 'Change' : 'Add Rep'}
+                </button>
+              )}
+            </div>
+            {rep ? (
+              <div className="space-y-1.5">
+                <p className="text-sm font-bold text-slate-900">{rep.name}</p>
+                <p className="text-xs text-slate-500 font-mono">{rep.code}</p>
+                {rep.phone && (
+                  <p className="text-xs text-slate-600 inline-flex items-center gap-1.5">
+                    <Phone className="w-3 h-3 text-slate-400" /> {rep.phone}
+                  </p>
+                )}
+                {rep.email && (
+                  <p className="text-xs text-slate-600 inline-flex items-center gap-1.5">
+                    <Mail className="w-3 h-3 text-slate-400" /> {rep.email}
+                  </p>
+                )}
+              </div>
+            ) : order.repName ? (
+              <p className="text-sm text-slate-700">{order.repName}</p>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                No rep assigned{isAdmin ? ' — click "Add Rep" to assign one.' : '.'}
+              </p>
+            )}
+          </div>
+
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
               <DollarSign className="w-4 h-4" /> Order Summary
@@ -481,7 +569,6 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          {/* Timeline of dates */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Calendar className="w-4 h-4" /> Timeline
