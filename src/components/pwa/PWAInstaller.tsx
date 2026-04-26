@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download, RefreshCw, X } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -8,11 +8,22 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+// How long the toast counts down before applying the update silently.
+// Gives users a chance to finish typing in a form, then auto-applies.
+const AUTO_APPLY_SECONDS = 8;
+// How often we ping the server to check for a new service worker (in ms).
+// Combined with the focus + visibility listeners, this makes the desktop PWA
+// pick up new releases within minutes of deploy.
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
+
 export function PWAInstaller() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [updateWorker, setUpdateWorker] = useState<ServiceWorker | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(AUTO_APPLY_SECONDS);
   const [installed, setInstalled] = useState(false);
   const [hideInstall, setHideInstall] = useState(false);
+  const [postponed, setPostponed] = useState(false);
+  const updateWorkerRef = useRef<ServiceWorker | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -38,15 +49,21 @@ export function PWAInstaller() {
       navigator.serviceWorker
         .register('/sw.js', { scope: '/' })
         .then((reg) => {
+          const captureWorker = (sw: ServiceWorker) => {
+            updateWorkerRef.current = sw;
+            setUpdateWorker(sw);
+          };
+
           if (reg.waiting && navigator.serviceWorker.controller) {
-            setUpdateWorker(reg.waiting);
+            captureWorker(reg.waiting);
           }
+
           reg.addEventListener('updatefound', () => {
             const sw = reg.installing;
             if (!sw) return;
             sw.addEventListener('statechange', () => {
               if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-                setUpdateWorker(sw);
+                captureWorker(sw);
               }
             });
           });
@@ -54,8 +71,12 @@ export function PWAInstaller() {
           const checkForUpdates = () => {
             reg.update().catch(() => {});
           };
+          // Check on focus + tab-visibility change (covers desktop PWA windows)
           window.addEventListener('focus', checkForUpdates);
-          const interval = window.setInterval(checkForUpdates, 30 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') checkForUpdates();
+          });
+          const interval = window.setInterval(checkForUpdates, POLL_INTERVAL_MS);
 
           cleanupSW = () => {
             window.removeEventListener('focus', checkForUpdates);
@@ -79,6 +100,23 @@ export function PWAInstaller() {
     };
   }, []);
 
+  // Countdown + auto-apply once a new SW is detected
+  useEffect(() => {
+    if (!updateWorker || postponed) return;
+    setSecondsLeft(AUTO_APPLY_SECONDS);
+    const timer = window.setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          window.clearInterval(timer);
+          updateWorkerRef.current?.postMessage('SKIP_WAITING');
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [updateWorker, postponed]);
+
   const handleInstall = async () => {
     if (!installPrompt) return;
     await installPrompt.prompt();
@@ -86,9 +124,12 @@ export function PWAInstaller() {
     if (outcome === 'accepted') setInstallPrompt(null);
   };
 
-  const handleUpdate = () => {
-    if (!updateWorker) return;
-    updateWorker.postMessage('SKIP_WAITING');
+  const handleUpdateNow = () => {
+    updateWorkerRef.current?.postMessage('SKIP_WAITING');
+  };
+
+  const handlePostpone = () => {
+    setPostponed(true);
   };
 
   return (
@@ -128,16 +169,35 @@ export function PWAInstaller() {
         </div>
       )}
 
-      {updateWorker && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-brand-navy text-white shadow-2xl rounded-full pl-4 pr-1 py-1 flex items-center gap-3">
-          <span className="text-xs font-semibold">A new version of Nexora is available.</span>
+      {updateWorker && !postponed && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-brand-navy text-white shadow-2xl rounded-full pl-4 pr-1 py-1 flex items-center gap-2">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <span className="text-xs font-semibold">
+            New version available — auto-updating in {secondsLeft}s
+          </span>
           <button
-            onClick={handleUpdate}
-            className="bg-white text-brand-navy text-xs font-bold px-3 py-1.5 rounded-full hover:bg-slate-100 inline-flex items-center gap-1.5"
+            onClick={handleUpdateNow}
+            className="bg-white text-brand-navy text-xs font-bold px-3 py-1.5 rounded-full hover:bg-slate-100"
           >
-            <RefreshCw className="w-3 h-3" /> Reload
+            Update now
+          </button>
+          <button
+            onClick={handlePostpone}
+            className="text-white/70 hover:text-white text-xs px-2"
+            aria-label="Postpone"
+          >
+            Later
           </button>
         </div>
+      )}
+
+      {updateWorker && postponed && (
+        <button
+          onClick={() => { setPostponed(false); }}
+          className="fixed bottom-4 right-4 z-[60] bg-brand-navy text-white text-xs font-semibold px-3 py-2 rounded-full shadow-lg flex items-center gap-1.5 hover:bg-brand-navy/90"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Update available
+        </button>
       )}
     </>
   );
