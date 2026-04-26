@@ -80,11 +80,14 @@ export interface Order {
   price?: number;
   specialInstructions?: string;
   userId: string;
+  repId?: string | null;
+  repName?: string | null;
   createdAt: string;
   updatedAt: string;
   shipment?: Partial<Shipment>;
   user?: Partial<User>;
   documents?: Document[];
+  salesperson?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'> | null;
   _count?: { documents: number };
 }
 
