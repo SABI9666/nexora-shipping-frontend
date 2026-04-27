@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Loader2, Package } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { X, Loader2, Package, Users, UserCog } from 'lucide-react';
 import api from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { Account, ItemMaster, Salesperson } from '@/types';
 
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
@@ -31,26 +32,77 @@ interface Props {
   onSuccess: () => void;
 }
 
+// Cubic meters from cm dimensions
+const formatCbm = (m3: number) => `${m3.toFixed(3)} m³`;
+
 export function NewOrderModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState('');
   const [confirmMode, setConfirmMode] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState('');
+  const [selectedRepId, setSelectedRepId] = useState('');
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { pickupCountry: 'US', deliveryCountry: 'US' },
   });
 
-  const weight = watch('weight') || 0;
-  const fromCountry = watch('pickupCountry') || 'US';
-  const toCountry = watch('deliveryCountry') || 'US';
-  const isInternational = fromCountry !== toCountry;
-  const estimatedPrice = Math.round((5.99 + weight * 2.5 + (isInternational ? 25 : 0)) * 100) / 100;
+  // Fetch masters for dropdowns — gracefully handles 404 when backend not yet deployed
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts-for-order'],
+    queryFn: () => api.get('/accounts?limit=500').then((r) => r.data.data as Account[]).catch(() => [] as Account[]),
+  });
+  const { data: items } = useQuery({
+    queryKey: ['items-for-order'],
+    queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
+  });
+  const { data: salespersons } = useQuery({
+    queryKey: ['salespersons-for-order'],
+    queryFn: () =>
+      api
+        .get('/salespersons?limit=500&active=true')
+        .then((r) => r.data.data as Salesperson[])
+        .catch(() => [] as Salesperson[]),
+  });
+
+  const selectedRep = (salespersons ?? []).find((s) => s.id === selectedRepId) || null;
+
+  const handleAccountSelect = (id: string) => {
+    setSelectedAccountId(id);
+    if (!id) return;
+    const a = (accounts ?? []).find((x) => x.id === id);
+    if (!a) return;
+    const addr = a.deliveryAddress || a.address || '';
+    if (addr) setValue('deliveryAddress', addr, { shouldValidate: true });
+    if (a.place) setValue('deliveryCity', a.place, { shouldValidate: true });
+    const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
+    setValue('specialInstructions', note);
+    // Auto-pick the account's primary salesperson if one is set
+    if (a.repId && !selectedRepId) {
+      setSelectedRepId(a.repId);
+    }
+  };
+
+  const handleItemSelect = (id: string) => {
+    setSelectedItemId(id);
+    if (!id) return;
+    const it = (items ?? []).find((x) => x.id === id);
+    if (!it) return;
+    const note = `Customer: ${it.code} — ${it.name}${it.phone ? ' · ' + it.phone : ''}`;
+    setValue('specialInstructions', note);
+  };
+
+  const length = watch('length') || 0;
+  const width = watch('width') || 0;
+  const height = watch('height') || 0;
+  const totalCbm = (length * width * height) / 1_000_000;
 
   const onSubmit = async (data: FormData) => {
     setError('');
     try {
-      const response = await api.post('/orders', data);
+      const payload = { ...data, repId: selectedRepId || undefined };
+      const response = await api.post('/orders', payload);
       const orderId = response.data.data.id;
       setCreatedOrderId(orderId);
       setConfirmMode(true);
@@ -73,7 +125,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-brand-navy rounded-lg flex items-center justify-center">
@@ -94,7 +145,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
               <p className="text-green-800 font-medium text-sm">Order created successfully!</p>
               <p className="text-green-700 text-sm mt-1">
-                Estimated price: <strong>{formatCurrency(estimatedPrice)}</strong>
+                Total CBM: <strong>{formatCbm(totalCbm)}</strong>
               </p>
               <p className="text-green-600 text-xs mt-2">
                 Confirming will create a shipment and tracking number.
@@ -113,6 +164,105 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
             {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
+
+            {/* Customer picker (from Masters) */}
+            <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-4 h-4 text-brand-navy" />
+                <h3 className="text-sm font-semibold text-brand-navy uppercase tracking-wide">
+                  Customer (optional — auto-fills fields)
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Account Master</label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => handleAccountSelect(e.target.value)}
+                    className="form-input"
+                  >
+                    <option value="">— Select account —</option>
+                    {(accounts ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.code} · {a.name}{a.mobile1 ? ` · ${a.mobile1}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(accounts ?? []).length === 0 && (
+                    <p className="text-xs text-slate-400 mt-1">No accounts yet — add one in Account Master.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="form-label">Item Master</label>
+                  <select
+                    value={selectedItemId}
+                    onChange={(e) => handleItemSelect(e.target.value)}
+                    className="form-input"
+                  >
+                    <option value="">— Select item —</option>
+                    {(items ?? []).map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(items ?? []).length === 0 && (
+                    <p className="text-xs text-slate-400 mt-1">No items yet — add one in Item Master.</p>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Selecting an Account fills delivery address + city, and pre-selects its default sales rep below.
+              </p>
+            </div>
+
+            {/* Sales Rep picker */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <UserCog className="w-4 h-4 text-amber-700" />
+                  <h3 className="text-sm font-semibold text-amber-800 uppercase tracking-wide">
+                    Sales Rep (optional)
+                  </h3>
+                </div>
+                <a
+                  href="/admin/salesperson-master"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-amber-700 hover:underline font-semibold"
+                >
+                  Manage Reps →
+                </a>
+              </div>
+              <select
+                value={selectedRepId}
+                onChange={(e) => setSelectedRepId(e.target.value)}
+                className="form-input"
+              >
+                <option value="">— No sales rep —</option>
+                {(salespersons ?? []).map((sp) => {
+                  const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
+                  return (
+                    <option key={sp.id} value={sp.id}>
+                      {sp.code} · {sp.name}{extras ? ` · ${extras}` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedRep && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 bg-white border border-amber-200 rounded-lg px-3 py-2">
+                  <span className="font-semibold text-amber-800">{selectedRep.code} · {selectedRep.name}</span>
+                  {selectedRep.phone && <span>📞 {selectedRep.phone}</span>}
+                  {selectedRep.email && <span>✉️ {selectedRep.email}</span>}
+                </div>
+              )}
+              {(salespersons ?? []).length === 0 && (
+                <p className="text-xs text-amber-700 mt-2">
+                  No salespersons defined yet — add them in the Salesperson Master. You can also leave this empty
+                  and assign a rep later from the order detail page.
+                </p>
+              )}
+            </div>
 
             {/* Pickup */}
             <div>
@@ -197,8 +347,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   </div>
                   <div className="flex items-end">
                     <div className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <p className="text-xs text-slate-500 mb-0.5">Estimated Price</p>
-                      <p className="text-lg font-bold text-brand-navy">{formatCurrency(estimatedPrice)}</p>
+                      <p className="text-xs text-slate-500 mb-0.5">Total CBM</p>
+                      <p className="text-lg font-bold text-brand-navy">{formatCbm(totalCbm)}</p>
                     </div>
                   </div>
                 </div>
