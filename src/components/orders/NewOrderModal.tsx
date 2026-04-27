@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { X, Loader2, Package } from 'lucide-react';
 import api from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
 
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
@@ -31,6 +30,9 @@ interface Props {
   onSuccess: () => void;
 }
 
+// Cubic meters from cm dimensions
+const formatCbm = (m3: number) => `${m3.toFixed(3)} m³`;
+
 export function NewOrderModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState('');
   const [confirmMode, setConfirmMode] = useState(false);
@@ -41,11 +43,10 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     defaultValues: { pickupCountry: 'US', deliveryCountry: 'US' },
   });
 
-  const weight = watch('weight') || 0;
-  const fromCountry = watch('pickupCountry') || 'US';
-  const toCountry = watch('deliveryCountry') || 'US';
-  const isInternational = fromCountry !== toCountry;
-  const estimatedPrice = Math.round((5.99 + weight * 2.5 + (isInternational ? 25 : 0)) * 100) / 100;
+  const length = watch('length') || 0;
+  const width = watch('width') || 0;
+  const height = watch('height') || 0;
+  const totalCbm = (length * width * height) / 1_000_000;
 
   const onSubmit = async (data: FormData) => {
     setError('');
@@ -94,7 +95,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
               <p className="text-green-800 font-medium text-sm">Order created successfully!</p>
               <p className="text-green-700 text-sm mt-1">
-                Estimated price: <strong>{formatCurrency(estimatedPrice)}</strong>
+                Total CBM: <strong>{formatCbm(totalCbm)}</strong>
               </p>
               <p className="text-green-600 text-xs mt-2">
                 Confirming will create a shipment and tracking number.
@@ -197,8 +198,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   </div>
                   <div className="flex items-end">
                     <div className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <p className="text-xs text-slate-500 mb-0.5">Estimated Price</p>
-                      <p className="text-lg font-bold text-brand-navy">{formatCurrency(estimatedPrice)}</p>
+                      <p className="text-xs text-slate-500 mb-0.5">Total CBM</p>
+                      <p className="text-lg font-bold text-brand-navy">{formatCbm(totalCbm)}</p>
                     </div>
                   </div>
                 </div>
