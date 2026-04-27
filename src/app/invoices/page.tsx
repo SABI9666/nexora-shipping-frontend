@@ -9,7 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Invoice, InvoiceStatus } from '@/types';
 import {
-  Plus, FileText, Trash2, Eye, X, Search, Receipt, Download, Loader2,
+  Plus, FileText, Trash2, Eye, X, Search, Receipt, Download, Loader2, FileType,
 } from 'lucide-react';
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 
@@ -23,10 +23,11 @@ const STATUS_CONFIG: Record<InvoiceStatus, { label: string; bg: string; color: s
 
 function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const cfg = STATUS_CONFIG[invoice.status];
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingWord, setDownloadingWord] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  const handleDownload = async () => {
-    setDownloading(true);
+  const handleDownloadWord = async () => {
+    setDownloadingWord(true);
     try {
       await downloadDocx(
         `/invoices/${invoice.id}/download/word`,
@@ -35,7 +36,21 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
     } catch {
       alert('Failed to download Word document.');
     } finally {
-      setDownloading(false);
+      setDownloadingWord(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadDocx(
+        `/invoices/${invoice.id}/download/pdf`,
+        `${invoice.invoiceNumber}.pdf`,
+      );
+    } catch {
+      alert('Failed to download PDF.');
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -52,10 +67,15 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
             <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(invoice.invoiceDate)}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleDownload} disabled={downloading}
+            <button onClick={handleDownloadPdf} disabled={downloadingPdf}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy rounded-xl hover:bg-brand-navy/90 disabled:opacity-50">
+              {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileType className="w-4 h-4" />}
+              PDF
+            </button>
+            <button onClick={handleDownloadWord} disabled={downloadingWord}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 disabled:opacity-50">
-              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Download Word
+              {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Word
             </button>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
               <X className="w-4 h-4" />
