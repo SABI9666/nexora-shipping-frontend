@@ -96,9 +96,11 @@ interface DeleteConfirmProps {
   onConfirm: () => void;
   onCancel: () => void;
   isPending: boolean;
+  errorMessage?: string;
 }
 
-function DeleteConfirm({ user, onConfirm, onCancel, isPending }: DeleteConfirmProps) {
+function DeleteConfirm({ user, onConfirm, onCancel, isPending, errorMessage }: DeleteConfirmProps) {
+  const hasDependents = user._count.orders > 0 || user._count.shipments > 0;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
@@ -107,9 +109,20 @@ function DeleteConfirm({ user, onConfirm, onCancel, isPending }: DeleteConfirmPr
           <AlertCircle className="w-6 h-6 text-red-600" />
         </div>
         <h3 className="font-bold text-slate-900 text-lg mb-1">Delete User?</h3>
-        <p className="text-slate-500 text-sm mb-5">
+        <p className="text-slate-500 text-sm mb-3">
           This will permanently delete <span className="font-semibold text-slate-800">{user.firstName} {user.lastName}</span> and all their data. This cannot be undone.
         </p>
+        {hasDependents && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+            Will also remove {user._count.orders} order(s) and {user._count.shipments} shipment(s) plus related documents/invoices/quotations.
+          </p>
+        )}
+        {errorMessage && (
+          <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">
             Cancel
@@ -135,6 +148,7 @@ export default function AdminUsersPage() {
   const [role, setRole] = useState('');
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users', page, search, role],
@@ -150,6 +164,14 @@ export default function AdminUsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setDeleteTarget(null);
+      setDeleteError('');
+    },
+    onError: (err: { response?: { data?: { message?: string } }; message?: string }) => {
+      setDeleteError(
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to delete user. Please try again.'
+      );
     },
   });
 
@@ -302,9 +324,10 @@ export default function AdminUsersPage() {
       {deleteTarget && (
         <DeleteConfirm
           user={deleteTarget}
-          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
-          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => { setDeleteError(''); deleteMutation.mutate(deleteTarget.id); }}
+          onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
           isPending={deleteMutation.isPending}
+          errorMessage={deleteError}
         />
       )}
     </DashboardLayout>
