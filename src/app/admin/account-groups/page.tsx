@@ -1,17 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { AccountGroup, AccountGroupType, ItemMaster } from '@/types';
-import { Plus, Trash2, Pencil, X, AlertCircle, Loader2, Save } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, AlertCircle, Loader2, Save, Sparkles } from 'lucide-react';
 
 const GROUP_TYPES: { value: AccountGroupType; label: string }[] = [
   { value: 'ASSET', label: 'Asset' },
   { value: 'LIABILITIES', label: 'Liabilities' },
   { value: 'PL', label: 'P & L A/c' },
   { value: 'TRADING', label: 'Trading A/c' },
+];
+
+type StandardGroup = { code: string; name: string; groupType: AccountGroupType; printOrder: number };
+
+const STANDARD_GROUPS: StandardGroup[] = [
+  { code: 'BRA',   name: 'BRANCH',             groupType: 'ASSET',       printOrder: 10 },
+  { code: 'CAP',   name: 'CAPITAL',            groupType: 'LIABILITIES', printOrder: 20 },
+  { code: 'CASH',  name: 'CASH ACCOUNT',       groupType: 'ASSET',       printOrder: 30 },
+  { code: 'COS',   name: 'COST OF SALES',      groupType: 'TRADING',     printOrder: 40 },
+  { code: 'CA',    name: 'CURRENT ASSET',      groupType: 'ASSET',       printOrder: 50 },
+  { code: 'CL',    name: 'CURRENT LIABILITY',  groupType: 'LIABILITIES', printOrder: 60 },
+  { code: 'DEP',   name: 'DEPOSITS',           groupType: 'ASSET',       printOrder: 70 },
+  { code: 'DEX',   name: 'DIRECT EXPENSES',    groupType: 'PL',          printOrder: 80 },
+  { code: 'EMP',   name: 'EMPLOYEES',          groupType: 'ASSET',       printOrder: 90 },
+  { code: 'EQU',   name: 'EQUITY',             groupType: 'LIABILITIES', printOrder: 100 },
+  { code: 'FA',    name: 'FIXED ASSETS',       groupType: 'ASSET',       printOrder: 110 },
+  { code: 'INC',   name: 'INCOME',             groupType: 'PL',          printOrder: 120 },
+  { code: 'IEX',   name: 'INDIRECT EXPENSES',  groupType: 'PL',          printOrder: 130 },
+  { code: 'IIN',   name: 'INDIRECT INCOMES',   groupType: 'PL',          printOrder: 140 },
+  { code: 'ITADV', name: 'IT-ADV',             groupType: 'ASSET',       printOrder: 150 },
+  { code: 'LADV',  name: 'LOANS & ADV.',       groupType: 'ASSET',       printOrder: 160 },
+  { code: 'LAA',   name: 'LOANS AND ADVANCES', groupType: 'ASSET',       printOrder: 170 },
+  { code: 'OPS',   name: 'OP. STOCK',          groupType: 'TRADING',     printOrder: 180 },
+  { code: 'OTH',   name: 'OTHERS',             groupType: 'ASSET',       printOrder: 190 },
+  { code: 'RNT',   name: 'RENT',               groupType: 'PL',          printOrder: 200 },
+  { code: 'SADV',  name: 'SALARY ADVANCE',     groupType: 'ASSET',       printOrder: 210 },
+  { code: 'SAL',   name: 'SALES',              groupType: 'TRADING',     printOrder: 220 },
+  { code: 'STAX',  name: 'SALES TAX',          groupType: 'LIABILITIES', printOrder: 230 },
+  { code: 'SHP',   name: 'SHIPPER',            groupType: 'ASSET',       printOrder: 240 },
+  { code: 'STF',   name: 'STAFF',              groupType: 'ASSET',       printOrder: 250 },
+  { code: 'SCR',   name: 'SUNDRY CREDITORS',   groupType: 'LIABILITIES', printOrder: 260 },
+  { code: 'SDR',   name: 'SUNDRY DEBTORS',     groupType: 'ASSET',       printOrder: 270 },
+  { code: 'TRD',   name: 'TRADING',            groupType: 'TRADING',     printOrder: 280 },
+  { code: 'VATP',  name: 'VAT PAYABLE',        groupType: 'LIABILITIES', printOrder: 290 },
+  { code: 'VATR',  name: 'VAT RECEIVABLE',     groupType: 'ASSET',       printOrder: 300 },
 ];
 
 interface FormState {
@@ -166,6 +201,8 @@ const GROUP_LABEL: Record<AccountGroupType, string> = {
 export default function AccountGroupsPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<FormState | null>(null);
+  const [picker, setPicker] = useState('');
+  const [bulkError, setBulkError] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['account-groups'],
@@ -174,9 +211,45 @@ export default function AccountGroupsPage() {
 
   const groups = data ?? [];
 
+  const missingStandard = useMemo(() => {
+    const haveCode = new Set(groups.map((g) => g.code.toUpperCase()));
+    const haveName = new Set(groups.map((g) => g.name.trim().toUpperCase()));
+    return STANDARD_GROUPS.filter(
+      (s) => !haveCode.has(s.code.toUpperCase()) && !haveName.has(s.name.toUpperCase()),
+    );
+  }, [groups]);
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/account-groups/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['account-groups'] }),
+  });
+
+  const quickAddMutation = useMutation({
+    mutationFn: (g: StandardGroup) => api.post('/account-groups', g),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-groups'] });
+      setPicker('');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setBulkError(err.response?.data?.message || 'Failed to add group.');
+    },
+  });
+
+  const bulkAddMutation = useMutation({
+    mutationFn: async (toAdd: StandardGroup[]) => {
+      for (const g of toAdd) {
+        try {
+          await api.post('/account-groups', g);
+        } catch {
+          // skip duplicates / errors and continue
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-groups'] });
+      setBulkError('');
+    },
+    onError: () => setBulkError('Some groups failed to add. Refresh and retry.'),
   });
 
   const onSaved = () => queryClient.invalidateQueries({ queryKey: ['account-groups'] });
@@ -195,6 +268,63 @@ export default function AccountGroupsPage() {
           <Plus className="w-4 h-4" /> New Group
         </button>
       </div>
+
+      {missingStandard.length > 0 && (
+        <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4 mb-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-brand-navy" />
+            <p className="text-xs font-semibold text-brand-navy uppercase tracking-wider">
+              Quick Add Standard Groups
+            </p>
+            <span className="text-xs text-slate-500">
+              ({missingStandard.length} of {STANDARD_GROUPS.length} not yet added)
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">
+            Pre-defined groups (BRANCH, CAPITAL, SUNDRY DEBTORS, VAT PAYABLE…). Anything you add here
+            instantly appears in the Acc Group dropdown on Account Master.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={picker}
+              onChange={(e) => setPicker(e.target.value)}
+              className="flex-1 min-w-[240px] border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white"
+            >
+              <option value="">— Select a standard group to add —</option>
+              {missingStandard.map((g) => (
+                <option key={g.code} value={g.code}>
+                  {g.name} · {GROUP_LABEL[g.groupType]}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                const g = STANDARD_GROUPS.find((x) => x.code === picker);
+                if (g) quickAddMutation.mutate(g);
+              }}
+              disabled={!picker || quickAddMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-brand-navy text-white rounded-lg hover:bg-brand-navy/90 disabled:opacity-50 flex items-center gap-2"
+            >
+              {quickAddMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Add
+            </button>
+            <button
+              onClick={() => bulkAddMutation.mutate(missingStandard)}
+              disabled={bulkAddMutation.isPending || missingStandard.length === 0}
+              className="px-4 py-2 text-sm font-semibold border border-brand-navy text-brand-navy rounded-lg hover:bg-brand-navy/10 disabled:opacity-50 flex items-center gap-2"
+              title={`Adds all ${missingStandard.length} missing standard groups`}
+            >
+              {bulkAddMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Add all missing ({missingStandard.length})
+            </button>
+          </div>
+          {bulkError && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-red-700">
+              <AlertCircle className="w-3.5 h-3.5" /> {bulkError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {isLoading ? (
