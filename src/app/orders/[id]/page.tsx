@@ -379,6 +379,7 @@ export default function OrderDetailPage() {
                 { icon: Hash, label: 'Description', value: order.packageDescription },
                 { icon: Weight, label: 'Weight', value: `${order.weight} kg` },
                 { icon: DollarSign, label: 'Declared Value', value: order.declaredValue ? formatCurrency(order.declaredValue) : '—' },
+                ...(order.cbm ? [{ icon: Package, label: 'CBM', value: `${order.cbm} m³` }] : []),
                 ...(order.length ? [{ icon: Package, label: 'Dimensions', value: `${order.length}×${order.width}×${order.height} cm` }] : []),
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="bg-slate-50 rounded-xl p-3">

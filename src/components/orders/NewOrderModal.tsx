@@ -19,12 +19,70 @@ const schema = z.object({
   deliveryCountry: z.string().length(2, 'Use 2-letter country code'),
   packageDescription: z.string().min(5, 'Required'),
   weight: z.number({ coerce: true }).positive().max(1000),
-  length: z.number({ coerce: true }).positive().optional(),
-  width: z.number({ coerce: true }).positive().optional(),
-  height: z.number({ coerce: true }).positive().optional(),
+  cbm: z.number({ coerce: true }).positive().optional(),
   declaredValue: z.number({ coerce: true }).positive().optional(),
   specialInstructions: z.string().optional(),
 });
+
+const COUNTRY_KEYWORDS: { code: string; patterns: RegExp[] }[] = [
+  { code: 'AE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
+  { code: 'SA', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
+  { code: 'QA', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
+  { code: 'KW', patterns: [/\bKuwait\b/i] },
+  { code: 'OM', patterns: [/\bOman\b/i, /\bMuscat\b/i] },
+  { code: 'BH', patterns: [/\bBahrain\b/i, /\bManama\b/i] },
+  { code: 'IN', patterns: [/\bIndia\b/i, /\bMumbai\b/i, /\bDelhi\b/i, /\bBangalore\b/i, /\bBengaluru\b/i, /\bKochi\b/i, /\bChennai\b/i, /\bKolkata\b/i, /\bHyderabad\b/i, /\bKerala\b/i] },
+  { code: 'PK', patterns: [/\bPakistan\b/i, /\bKarachi\b/i, /\bLahore\b/i, /\bIslamabad\b/i] },
+  { code: 'BD', patterns: [/\bBangladesh\b/i, /\bDhaka\b/i] },
+  { code: 'LK', patterns: [/\bSri\s+Lanka\b/i, /\bColombo\b/i] },
+  { code: 'NP', patterns: [/\bNepal\b/i, /\bKathmandu\b/i] },
+  { code: 'PH', patterns: [/\bPhilippines\b/i, /\bManila\b/i] },
+  { code: 'CN', patterns: [/\bChina\b/i, /\bShanghai\b/i, /\bBeijing\b/i, /\bShenzhen\b/i, /\bGuangzhou\b/i] },
+  { code: 'HK', patterns: [/\bHong\s+Kong\b/i] },
+  { code: 'SG', patterns: [/\bSingapore\b/i] },
+  { code: 'MY', patterns: [/\bMalaysia\b/i, /\bKuala\s+Lumpur\b/i] },
+  { code: 'TH', patterns: [/\bThailand\b/i, /\bBangkok\b/i] },
+  { code: 'JP', patterns: [/\bJapan\b/i, /\bTokyo\b/i, /\bOsaka\b/i] },
+  { code: 'KR', patterns: [/\bSouth\s+Korea\b/i, /\bSeoul\b/i] },
+  { code: 'GB', patterns: [/\bUnited\s+Kingdom\b/i, /\bU\.?K\.?\b/, /\bEngland\b/i, /\bScotland\b/i, /\bWales\b/i, /\bLondon\b/i, /\bManchester\b/i, /\bBirmingham\b/i] },
+  { code: 'IE', patterns: [/\bIreland\b/i, /\bDublin\b/i] },
+  { code: 'FR', patterns: [/\bFrance\b/i, /\bParis\b/i, /\bMarseille\b/i] },
+  { code: 'DE', patterns: [/\bGermany\b/i, /\bBerlin\b/i, /\bMunich\b/i, /\bHamburg\b/i] },
+  { code: 'ES', patterns: [/\bSpain\b/i, /\bMadrid\b/i, /\bBarcelona\b/i] },
+  { code: 'IT', patterns: [/\bItaly\b/i, /\bRome\b/i, /\bMilan\b/i] },
+  { code: 'NL', patterns: [/\bNetherlands\b/i, /\bAmsterdam\b/i, /\bRotterdam\b/i] },
+  { code: 'BE', patterns: [/\bBelgium\b/i, /\bBrussels\b/i] },
+  { code: 'CH', patterns: [/\bSwitzerland\b/i, /\bZurich\b/i, /\bGeneva\b/i] },
+  { code: 'AT', patterns: [/\bAustria\b/i, /\bVienna\b/i] },
+  { code: 'SE', patterns: [/\bSweden\b/i, /\bStockholm\b/i] },
+  { code: 'NO', patterns: [/\bNorway\b/i, /\bOslo\b/i] },
+  { code: 'DK', patterns: [/\bDenmark\b/i, /\bCopenhagen\b/i] },
+  { code: 'FI', patterns: [/\bFinland\b/i, /\bHelsinki\b/i] },
+  { code: 'PL', patterns: [/\bPoland\b/i, /\bWarsaw\b/i] },
+  { code: 'TR', patterns: [/\bTurkey\b/i, /\bIstanbul\b/i, /\bAnkara\b/i] },
+  { code: 'RU', patterns: [/\bRussia\b/i, /\bMoscow\b/i] },
+  { code: 'EG', patterns: [/\bEgypt\b/i, /\bCairo\b/i] },
+  { code: 'ZA', patterns: [/\bSouth\s+Africa\b/i, /\bJohannesburg\b/i, /\bCape\s+Town\b/i] },
+  { code: 'KE', patterns: [/\bKenya\b/i, /\bNairobi\b/i] },
+  { code: 'NG', patterns: [/\bNigeria\b/i, /\bLagos\b/i, /\bAbuja\b/i] },
+  { code: 'AU', patterns: [/\bAustralia\b/i, /\bSydney\b/i, /\bMelbourne\b/i] },
+  { code: 'NZ', patterns: [/\bNew\s+Zealand\b/i, /\bAuckland\b/i, /\bWellington\b/i] },
+  { code: 'CA', patterns: [/\bCanada\b/i, /\bToronto\b/i, /\bVancouver\b/i, /\bMontreal\b/i] },
+  { code: 'MX', patterns: [/\bMexico\b/i] },
+  { code: 'BR', patterns: [/\bBrazil\b/i, /\bSao\s+Paulo\b/i, /\bRio\s+de\s+Janeiro\b/i] },
+  { code: 'AR', patterns: [/\bArgentina\b/i, /\bBuenos\s+Aires\b/i] },
+  { code: 'US', patterns: [/\bU\.?S\.?A?\.?\b/, /\bUnited\s+States\b/i, /\bNew\s+York\b/i, /\bLos\s+Angeles\b/i, /\bChicago\b/i, /\bHouston\b/i, /\bMiami\b/i, /\bDallas\b/i, /\bSan\s+Francisco\b/i] },
+];
+
+function inferCountryCode(text: string): string | null {
+  if (!text) return null;
+  for (const { code, patterns } of COUNTRY_KEYWORDS) {
+    if (patterns.some((p) => p.test(text))) return code;
+  }
+  const trailingIso = /[\s,]([A-Z]{2})\s*$/.exec(text.trim());
+  if (trailingIso) return trailingIso[1];
+  return null;
+}
 
 type FormData = z.infer<typeof schema>;
 
@@ -74,6 +132,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     const addr = a.deliveryAddress || a.address || '';
     if (addr) setValue('deliveryAddress', addr, { shouldValidate: true });
     if (a.place) setValue('deliveryCity', a.place, { shouldValidate: true });
+    const inferred = inferCountryCode(`${addr} ${a.place ?? ''}`);
+    if (inferred) setValue('deliveryCountry', inferred, { shouldValidate: true });
     const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
     setValue('specialInstructions', note);
     // Auto-pick the account's primary salesperson if one is set
@@ -96,6 +156,16 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   const toCountry = watch('deliveryCountry') || 'US';
   const isInternational = fromCountry !== toCountry;
   const estimatedPrice = Math.round((5.99 + weight * 2.5 + (isInternational ? 25 : 0)) * 100) / 100;
+
+  const autoFillCountry = (
+    addressField: 'pickupAddress' | 'deliveryAddress',
+    cityField: 'pickupCity' | 'deliveryCity',
+    countryField: 'pickupCountry' | 'deliveryCountry',
+  ) => {
+    const text = `${watch(addressField) || ''} ${watch(cityField) || ''}`;
+    const code = inferCountryCode(text);
+    if (code) setValue(countryField, code, { shouldValidate: true });
+  };
 
   const onSubmit = async (data: FormData) => {
     setError('');
@@ -269,17 +339,29 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="form-label">Street Address</label>
-                  <input {...register('pickupAddress')} className="form-input" placeholder="123 Main St" />
+                  <input
+                    {...register('pickupAddress', {
+                      onBlur: () => autoFillCountry('pickupAddress', 'pickupCity', 'pickupCountry'),
+                    })}
+                    className="form-input"
+                    placeholder="123 Main St, Dubai, UAE"
+                  />
                   {errors.pickupAddress && <p className="text-red-500 text-xs mt-1">{errors.pickupAddress.message}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">City</label>
-                    <input {...register('pickupCity')} className="form-input" placeholder="New York" />
+                    <input
+                      {...register('pickupCity', {
+                        onBlur: () => autoFillCountry('pickupAddress', 'pickupCity', 'pickupCountry'),
+                      })}
+                      className="form-input"
+                      placeholder="Dubai"
+                    />
                     {errors.pickupCity && <p className="text-red-500 text-xs mt-1">{errors.pickupCity.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">Country Code</label>
+                    <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
                     <input {...register('pickupCountry')} className="form-input" placeholder="US" maxLength={2} />
                     {errors.pickupCountry && <p className="text-red-500 text-xs mt-1">{errors.pickupCountry.message}</p>}
                   </div>
@@ -293,17 +375,29 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="form-label">Street Address</label>
-                  <input {...register('deliveryAddress')} className="form-input" placeholder="456 Oak Ave" />
+                  <input
+                    {...register('deliveryAddress', {
+                      onBlur: () => autoFillCountry('deliveryAddress', 'deliveryCity', 'deliveryCountry'),
+                    })}
+                    className="form-input"
+                    placeholder="456 Oak Ave, Mumbai, India"
+                  />
                   {errors.deliveryAddress && <p className="text-red-500 text-xs mt-1">{errors.deliveryAddress.message}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">City</label>
-                    <input {...register('deliveryCity')} className="form-input" placeholder="Los Angeles" />
+                    <input
+                      {...register('deliveryCity', {
+                        onBlur: () => autoFillCountry('deliveryAddress', 'deliveryCity', 'deliveryCountry'),
+                      })}
+                      className="form-input"
+                      placeholder="Mumbai"
+                    />
                     {errors.deliveryCity && <p className="text-red-500 text-xs mt-1">{errors.deliveryCity.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">Country Code</label>
+                    <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
                     <input {...register('deliveryCountry')} className="form-input" placeholder="US" maxLength={2} />
                     {errors.deliveryCountry && <p className="text-red-500 text-xs mt-1">{errors.deliveryCountry.message}</p>}
                   </div>
@@ -320,23 +414,16 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   <input {...register('packageDescription')} className="form-input" placeholder="e.g. Electronics - Laptop" />
                   {errors.packageDescription && <p className="text-red-500 text-xs mt-1">{errors.packageDescription.message}</p>}
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">Weight (kg)</label>
                     <input {...register('weight')} type="number" step="0.1" className="form-input" placeholder="2.5" />
                     {errors.weight && <p className="text-red-500 text-xs mt-1">{errors.weight.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">L (cm)</label>
-                    <input {...register('length')} type="number" step="1" className="form-input" placeholder="40" />
-                  </div>
-                  <div>
-                    <label className="form-label">W (cm)</label>
-                    <input {...register('width')} type="number" step="1" className="form-input" placeholder="30" />
-                  </div>
-                  <div>
-                    <label className="form-label">H (cm)</label>
-                    <input {...register('height')} type="number" step="1" className="form-input" placeholder="10" />
+                    <label className="form-label">CBM (m³)</label>
+                    <input {...register('cbm')} type="number" step="0.001" className="form-input" placeholder="0.012" />
+                    {errors.cbm && <p className="text-red-500 text-xs mt-1">{errors.cbm.message}</p>}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
