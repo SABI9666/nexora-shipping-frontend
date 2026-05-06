@@ -280,14 +280,14 @@ export function AccountMasterForm({
             </div>
           )}
 
-          {/* Pre-fill from Item Master */}
+          {/* Pre-fill from Customer Master */}
           {!isEdit && (items ?? []).length > 0 && (
             <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
               <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-2 block">
-                Pre-fill from Item Master
+                Pre-fill from Customer Master
               </label>
               <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
-                <option value="">— Select an item —</option>
+                <option value="">— Select a customer —</option>
                 {(items ?? []).map((it) => (
                   <option key={it.id} value={it.id}>
                     {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
