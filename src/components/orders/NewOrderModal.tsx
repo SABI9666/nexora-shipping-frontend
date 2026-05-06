@@ -13,10 +13,10 @@ import { Account, ItemMaster, Salesperson } from '@/types';
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
   pickupCity: z.string().min(2, 'Required'),
-  pickupCountry: z.string().length(2, 'Use 2-letter country code (e.g. US)'),
+  pickupCountry: z.string().length(3, 'Use 3-letter country code (e.g. USA)'),
   deliveryAddress: z.string().min(5, 'Required'),
   deliveryCity: z.string().min(2, 'Required'),
-  deliveryCountry: z.string().length(2, 'Use 2-letter country code'),
+  deliveryCountry: z.string().length(3, 'Use 3-letter country code'),
   packageDescription: z.string().min(5, 'Required'),
   weight: z.number({ coerce: true }).positive().max(1000),
   cbm: z.number({ coerce: true }).positive().optional(),
@@ -25,53 +25,53 @@ const schema = z.object({
 });
 
 const COUNTRY_KEYWORDS: { code: string; patterns: RegExp[] }[] = [
-  { code: 'AE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
-  { code: 'SA', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
-  { code: 'QA', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
-  { code: 'KW', patterns: [/\bKuwait\b/i] },
-  { code: 'OM', patterns: [/\bOman\b/i, /\bMuscat\b/i] },
-  { code: 'BH', patterns: [/\bBahrain\b/i, /\bManama\b/i] },
-  { code: 'IN', patterns: [/\bIndia\b/i, /\bMumbai\b/i, /\bDelhi\b/i, /\bBangalore\b/i, /\bBengaluru\b/i, /\bKochi\b/i, /\bChennai\b/i, /\bKolkata\b/i, /\bHyderabad\b/i, /\bKerala\b/i] },
-  { code: 'PK', patterns: [/\bPakistan\b/i, /\bKarachi\b/i, /\bLahore\b/i, /\bIslamabad\b/i] },
-  { code: 'BD', patterns: [/\bBangladesh\b/i, /\bDhaka\b/i] },
-  { code: 'LK', patterns: [/\bSri\s+Lanka\b/i, /\bColombo\b/i] },
-  { code: 'NP', patterns: [/\bNepal\b/i, /\bKathmandu\b/i] },
-  { code: 'PH', patterns: [/\bPhilippines\b/i, /\bManila\b/i] },
-  { code: 'CN', patterns: [/\bChina\b/i, /\bShanghai\b/i, /\bBeijing\b/i, /\bShenzhen\b/i, /\bGuangzhou\b/i] },
-  { code: 'HK', patterns: [/\bHong\s+Kong\b/i] },
-  { code: 'SG', patterns: [/\bSingapore\b/i] },
-  { code: 'MY', patterns: [/\bMalaysia\b/i, /\bKuala\s+Lumpur\b/i] },
-  { code: 'TH', patterns: [/\bThailand\b/i, /\bBangkok\b/i] },
-  { code: 'JP', patterns: [/\bJapan\b/i, /\bTokyo\b/i, /\bOsaka\b/i] },
-  { code: 'KR', patterns: [/\bSouth\s+Korea\b/i, /\bSeoul\b/i] },
-  { code: 'GB', patterns: [/\bUnited\s+Kingdom\b/i, /\bU\.?K\.?\b/, /\bEngland\b/i, /\bScotland\b/i, /\bWales\b/i, /\bLondon\b/i, /\bManchester\b/i, /\bBirmingham\b/i] },
-  { code: 'IE', patterns: [/\bIreland\b/i, /\bDublin\b/i] },
-  { code: 'FR', patterns: [/\bFrance\b/i, /\bParis\b/i, /\bMarseille\b/i] },
-  { code: 'DE', patterns: [/\bGermany\b/i, /\bBerlin\b/i, /\bMunich\b/i, /\bHamburg\b/i] },
-  { code: 'ES', patterns: [/\bSpain\b/i, /\bMadrid\b/i, /\bBarcelona\b/i] },
-  { code: 'IT', patterns: [/\bItaly\b/i, /\bRome\b/i, /\bMilan\b/i] },
-  { code: 'NL', patterns: [/\bNetherlands\b/i, /\bAmsterdam\b/i, /\bRotterdam\b/i] },
-  { code: 'BE', patterns: [/\bBelgium\b/i, /\bBrussels\b/i] },
-  { code: 'CH', patterns: [/\bSwitzerland\b/i, /\bZurich\b/i, /\bGeneva\b/i] },
-  { code: 'AT', patterns: [/\bAustria\b/i, /\bVienna\b/i] },
-  { code: 'SE', patterns: [/\bSweden\b/i, /\bStockholm\b/i] },
-  { code: 'NO', patterns: [/\bNorway\b/i, /\bOslo\b/i] },
-  { code: 'DK', patterns: [/\bDenmark\b/i, /\bCopenhagen\b/i] },
-  { code: 'FI', patterns: [/\bFinland\b/i, /\bHelsinki\b/i] },
-  { code: 'PL', patterns: [/\bPoland\b/i, /\bWarsaw\b/i] },
-  { code: 'TR', patterns: [/\bTurkey\b/i, /\bIstanbul\b/i, /\bAnkara\b/i] },
-  { code: 'RU', patterns: [/\bRussia\b/i, /\bMoscow\b/i] },
-  { code: 'EG', patterns: [/\bEgypt\b/i, /\bCairo\b/i] },
-  { code: 'ZA', patterns: [/\bSouth\s+Africa\b/i, /\bJohannesburg\b/i, /\bCape\s+Town\b/i] },
-  { code: 'KE', patterns: [/\bKenya\b/i, /\bNairobi\b/i] },
-  { code: 'NG', patterns: [/\bNigeria\b/i, /\bLagos\b/i, /\bAbuja\b/i] },
-  { code: 'AU', patterns: [/\bAustralia\b/i, /\bSydney\b/i, /\bMelbourne\b/i] },
-  { code: 'NZ', patterns: [/\bNew\s+Zealand\b/i, /\bAuckland\b/i, /\bWellington\b/i] },
-  { code: 'CA', patterns: [/\bCanada\b/i, /\bToronto\b/i, /\bVancouver\b/i, /\bMontreal\b/i] },
-  { code: 'MX', patterns: [/\bMexico\b/i] },
-  { code: 'BR', patterns: [/\bBrazil\b/i, /\bSao\s+Paulo\b/i, /\bRio\s+de\s+Janeiro\b/i] },
-  { code: 'AR', patterns: [/\bArgentina\b/i, /\bBuenos\s+Aires\b/i] },
-  { code: 'US', patterns: [/\bU\.?S\.?A?\.?\b/, /\bUnited\s+States\b/i, /\bNew\s+York\b/i, /\bLos\s+Angeles\b/i, /\bChicago\b/i, /\bHouston\b/i, /\bMiami\b/i, /\bDallas\b/i, /\bSan\s+Francisco\b/i] },
+  { code: 'ARE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
+  { code: 'SAU', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
+  { code: 'QAT', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
+  { code: 'KWT', patterns: [/\bKuwait\b/i] },
+  { code: 'OMN', patterns: [/\bOman\b/i, /\bMuscat\b/i] },
+  { code: 'BHR', patterns: [/\bBahrain\b/i, /\bManama\b/i] },
+  { code: 'IND', patterns: [/\bIndia\b/i, /\bMumbai\b/i, /\bDelhi\b/i, /\bBangalore\b/i, /\bBengaluru\b/i, /\bKochi\b/i, /\bChennai\b/i, /\bKolkata\b/i, /\bHyderabad\b/i, /\bKerala\b/i] },
+  { code: 'PAK', patterns: [/\bPakistan\b/i, /\bKarachi\b/i, /\bLahore\b/i, /\bIslamabad\b/i] },
+  { code: 'BGD', patterns: [/\bBangladesh\b/i, /\bDhaka\b/i] },
+  { code: 'LKA', patterns: [/\bSri\s+Lanka\b/i, /\bColombo\b/i] },
+  { code: 'NPL', patterns: [/\bNepal\b/i, /\bKathmandu\b/i] },
+  { code: 'PHL', patterns: [/\bPhilippines\b/i, /\bManila\b/i] },
+  { code: 'CHN', patterns: [/\bChina\b/i, /\bShanghai\b/i, /\bBeijing\b/i, /\bShenzhen\b/i, /\bGuangzhou\b/i] },
+  { code: 'HKG', patterns: [/\bHong\s+Kong\b/i] },
+  { code: 'SGP', patterns: [/\bSingapore\b/i] },
+  { code: 'MYS', patterns: [/\bMalaysia\b/i, /\bKuala\s+Lumpur\b/i] },
+  { code: 'THA', patterns: [/\bThailand\b/i, /\bBangkok\b/i] },
+  { code: 'JPN', patterns: [/\bJapan\b/i, /\bTokyo\b/i, /\bOsaka\b/i] },
+  { code: 'KOR', patterns: [/\bSouth\s+Korea\b/i, /\bSeoul\b/i] },
+  { code: 'GBR', patterns: [/\bUnited\s+Kingdom\b/i, /\bU\.?K\.?\b/, /\bEngland\b/i, /\bScotland\b/i, /\bWales\b/i, /\bLondon\b/i, /\bManchester\b/i, /\bBirmingham\b/i] },
+  { code: 'IRL', patterns: [/\bIreland\b/i, /\bDublin\b/i] },
+  { code: 'FRA', patterns: [/\bFrance\b/i, /\bParis\b/i, /\bMarseille\b/i] },
+  { code: 'DEU', patterns: [/\bGermany\b/i, /\bBerlin\b/i, /\bMunich\b/i, /\bHamburg\b/i] },
+  { code: 'ESP', patterns: [/\bSpain\b/i, /\bMadrid\b/i, /\bBarcelona\b/i] },
+  { code: 'ITA', patterns: [/\bItaly\b/i, /\bRome\b/i, /\bMilan\b/i] },
+  { code: 'NLD', patterns: [/\bNetherlands\b/i, /\bAmsterdam\b/i, /\bRotterdam\b/i] },
+  { code: 'BEL', patterns: [/\bBelgium\b/i, /\bBrussels\b/i] },
+  { code: 'CHE', patterns: [/\bSwitzerland\b/i, /\bZurich\b/i, /\bGeneva\b/i] },
+  { code: 'AUT', patterns: [/\bAustria\b/i, /\bVienna\b/i] },
+  { code: 'SWE', patterns: [/\bSweden\b/i, /\bStockholm\b/i] },
+  { code: 'NOR', patterns: [/\bNorway\b/i, /\bOslo\b/i] },
+  { code: 'DNK', patterns: [/\bDenmark\b/i, /\bCopenhagen\b/i] },
+  { code: 'FIN', patterns: [/\bFinland\b/i, /\bHelsinki\b/i] },
+  { code: 'POL', patterns: [/\bPoland\b/i, /\bWarsaw\b/i] },
+  { code: 'TUR', patterns: [/\bTurkey\b/i, /\bIstanbul\b/i, /\bAnkara\b/i] },
+  { code: 'RUS', patterns: [/\bRussia\b/i, /\bMoscow\b/i] },
+  { code: 'EGY', patterns: [/\bEgypt\b/i, /\bCairo\b/i] },
+  { code: 'ZAF', patterns: [/\bSouth\s+Africa\b/i, /\bJohannesburg\b/i, /\bCape\s+Town\b/i] },
+  { code: 'KEN', patterns: [/\bKenya\b/i, /\bNairobi\b/i] },
+  { code: 'NGA', patterns: [/\bNigeria\b/i, /\bLagos\b/i, /\bAbuja\b/i] },
+  { code: 'AUS', patterns: [/\bAustralia\b/i, /\bSydney\b/i, /\bMelbourne\b/i] },
+  { code: 'NZL', patterns: [/\bNew\s+Zealand\b/i, /\bAuckland\b/i, /\bWellington\b/i] },
+  { code: 'CAN', patterns: [/\bCanada\b/i, /\bToronto\b/i, /\bVancouver\b/i, /\bMontreal\b/i] },
+  { code: 'MEX', patterns: [/\bMexico\b/i] },
+  { code: 'BRA', patterns: [/\bBrazil\b/i, /\bSao\s+Paulo\b/i, /\bRio\s+de\s+Janeiro\b/i] },
+  { code: 'ARG', patterns: [/\bArgentina\b/i, /\bBuenos\s+Aires\b/i] },
+  { code: 'USA', patterns: [/\bU\.?S\.?A?\.?\b/, /\bUnited\s+States\b/i, /\bNew\s+York\b/i, /\bLos\s+Angeles\b/i, /\bChicago\b/i, /\bHouston\b/i, /\bMiami\b/i, /\bDallas\b/i, /\bSan\s+Francisco\b/i] },
 ];
 
 function inferCountryCode(text: string): string | null {
@@ -79,7 +79,7 @@ function inferCountryCode(text: string): string | null {
   for (const { code, patterns } of COUNTRY_KEYWORDS) {
     if (patterns.some((p) => p.test(text))) return code;
   }
-  const trailingIso = /[\s,]([A-Z]{2})\s*$/.exec(text.trim());
+  const trailingIso = /[\s,]([A-Z]{3})\s*$/.exec(text.trim());
   if (trailingIso) return trailingIso[1];
   return null;
 }
@@ -101,7 +101,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { pickupCountry: 'US', deliveryCountry: 'US' },
+    defaultValues: { pickupCountry: 'USA', deliveryCountry: 'USA' },
   });
 
   // Fetch masters for dropdowns — gracefully handles 404 when backend not yet deployed
@@ -152,8 +152,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
   };
 
   const weight = watch('weight') || 0;
-  const fromCountry = watch('pickupCountry') || 'US';
-  const toCountry = watch('deliveryCountry') || 'US';
+  const fromCountry = watch('pickupCountry') || 'USA';
+  const toCountry = watch('deliveryCountry') || 'USA';
   const isInternational = fromCountry !== toCountry;
   const estimatedPrice = Math.round((5.99 + weight * 2.5 + (isInternational ? 25 : 0)) * 100) / 100;
 
@@ -362,7 +362,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   </div>
                   <div>
                     <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
-                    <input {...register('pickupCountry')} className="form-input" placeholder="US" maxLength={2} />
+                    <input {...register('pickupCountry')} className="form-input" placeholder="USA" maxLength={3} />
                     {errors.pickupCountry && <p className="text-red-500 text-xs mt-1">{errors.pickupCountry.message}</p>}
                   </div>
                 </div>
@@ -398,7 +398,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   </div>
                   <div>
                     <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
-                    <input {...register('deliveryCountry')} className="form-input" placeholder="US" maxLength={2} />
+                    <input {...register('deliveryCountry')} className="form-input" placeholder="USA" maxLength={3} />
                     {errors.deliveryCountry && <p className="text-red-500 text-xs mt-1">{errors.deliveryCountry.message}</p>}
                   </div>
                 </div>
