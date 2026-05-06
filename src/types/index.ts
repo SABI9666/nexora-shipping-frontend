@@ -76,6 +76,7 @@ export interface Order {
   length?: number;
   width?: number;
   height?: number;
+  cbm?: number;
   declaredValue?: number;
   price?: number;
   specialInstructions?: string;
