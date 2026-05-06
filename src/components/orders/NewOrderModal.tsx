@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, Package, Users, UserCog } from 'lucide-react';
 import api from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
 import { Account, ItemMaster, Salesperson } from '@/types';
 
 const schema = z.object({
@@ -20,7 +19,6 @@ const schema = z.object({
   packageDescription: z.string().min(5, 'Required'),
   weight: z.number({ coerce: true }).positive().max(1000),
   cbm: z.number({ coerce: true }).positive().optional(),
-  declaredValue: z.number({ coerce: true }).positive().optional(),
   specialInstructions: z.string().optional(),
 });
 
@@ -151,12 +149,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     setValue('specialInstructions', note);
   };
 
-  const weight = watch('weight') || 0;
-  const fromCountry = watch('pickupCountry') || 'USA';
-  const toCountry = watch('deliveryCountry') || 'USA';
-  const isInternational = fromCountry !== toCountry;
-  const estimatedPrice = Math.round((5.99 + weight * 2.5 + (isInternational ? 25 : 0)) * 100) / 100;
-
   const autoFillCountry = (
     addressField: 'pickupAddress' | 'deliveryAddress',
     cityField: 'pickupCity' | 'deliveryCity',
@@ -213,9 +205,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
           <div className="p-6">
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
               <p className="text-green-800 font-medium text-sm">Order created successfully!</p>
-              <p className="text-green-700 text-sm mt-1">
-                Estimated price: <strong>{formatCurrency(estimatedPrice)}</strong>
-              </p>
               <p className="text-green-600 text-xs mt-2">
                 Confirming will create a shipment and tracking number.
               </p>
@@ -424,18 +413,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                     <label className="form-label">CBM (m³)</label>
                     <input {...register('cbm')} type="number" step="0.001" className="form-input" placeholder="0.012" />
                     {errors.cbm && <p className="text-red-500 text-xs mt-1">{errors.cbm.message}</p>}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="form-label">Declared Value ($)</label>
-                    <input {...register('declaredValue')} type="number" step="0.01" className="form-input" placeholder="Optional" />
-                  </div>
-                  <div className="flex items-end">
-                    <div className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <p className="text-xs text-slate-500 mb-0.5">Estimated Price</p>
-                      <p className="text-lg font-bold text-brand-navy">{formatCurrency(estimatedPrice)}</p>
-                    </div>
                   </div>
                 </div>
                 <div>
