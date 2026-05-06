@@ -192,13 +192,13 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   )}
                 </div>
                 <div>
-                  <label className="form-label">Item Master</label>
+                  <label className="form-label">Customer Master</label>
                   <select
                     value={selectedItemId}
                     onChange={(e) => handleItemSelect(e.target.value)}
                     className="form-input"
                   >
-                    <option value="">— Select item —</option>
+                    <option value="">— Select customer —</option>
                     {(items ?? []).map((it) => (
                       <option key={it.id} value={it.id}>
                         {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
@@ -206,7 +206,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                     ))}
                   </select>
                   {(items ?? []).length === 0 && (
-                    <p className="text-xs text-slate-400 mt-1">No items yet — add one in Item Master.</p>
+                    <p className="text-xs text-slate-400 mt-1">No customers yet — add one in Customer Master.</p>
                   )}
                 </div>
               </div>

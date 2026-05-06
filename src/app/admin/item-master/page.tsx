@@ -16,6 +16,19 @@ interface FormState {
 
 const emptyForm = (): FormState => ({ code: '', name: '', phone: '' });
 
+const CODE_PREFIX = 'NECU-';
+const CODE_PAD = 3;
+
+function nextCustomerCode(existing: ItemMaster[]): string {
+  const re = new RegExp(`^${CODE_PREFIX}(\\d+)$`, 'i');
+  const nums = existing
+    .map((it) => re.exec(it.code)?.[1])
+    .filter((s): s is string => !!s)
+    .map((s) => parseInt(s, 10));
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return `${CODE_PREFIX}${String(next).padStart(CODE_PAD, '0')}`;
+}
+
 function EditorModal({
   initial,
   onClose,
@@ -51,7 +64,7 @@ function EditorModal({
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-bold text-slate-900">
-            {isEdit ? 'Edit Item' : 'New Item'}
+            {isEdit ? 'Edit Customer' : 'New Customer'}
           </h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
             <X className="w-4 h-4" />
@@ -67,7 +80,10 @@ function EditorModal({
           <div>
             <label className={labelCls}>Code *</label>
             <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}
-              placeholder="CUST-001" className={inputCls} />
+              placeholder="NECU-001" className={inputCls} />
+            {!isEdit && (
+              <p className="text-xs text-slate-400 mt-1">Auto-suggested — edit if you need a custom code.</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>Name *</label>
@@ -112,27 +128,38 @@ export default function ItemMasterPage() {
     },
   });
 
+  const { data: allForCode } = useQuery({
+    queryKey: ['items-all-for-code'],
+    queryFn: () => api.get('/items?limit=1000').then((r) => r.data.data as ItemMaster[]),
+  });
+
   const items = data ?? [];
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/items/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['items-all-for-code'] });
+    },
   });
 
-  const onSaved = () => queryClient.invalidateQueries({ queryKey: ['items'] });
+  const onSaved = () => {
+    queryClient.invalidateQueries({ queryKey: ['items'] });
+    queryClient.invalidateQueries({ queryKey: ['items-all-for-code'] });
+  };
 
   return (
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="page-title">Item Master</h1>
+          <h1 className="page-title">Customer Master</h1>
           <p className="page-subtitle">Quick customer directory — code, name, phone</p>
         </div>
         <button
-          onClick={() => setEditing(emptyForm())}
+          onClick={() => setEditing({ ...emptyForm(), code: nextCustomerCode(allForCode ?? items) })}
           className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90"
         >
-          <Plus className="w-4 h-4" /> New Item
+          <Plus className="w-4 h-4" /> New Customer
         </button>
       </div>
 
@@ -154,7 +181,7 @@ export default function ItemMasterPage() {
             <Loader2 className="w-6 h-6 text-brand-navy animate-spin" />
           </div>
         ) : items.length === 0 ? (
-          <div className="py-16 text-center text-slate-400">No items yet.</div>
+          <div className="py-16 text-center text-slate-400">No customers yet.</div>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">

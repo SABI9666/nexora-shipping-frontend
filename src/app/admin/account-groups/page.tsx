@@ -77,7 +77,7 @@ function EditorModal({
   const [error, setError] = useState('');
   const isEdit = !!form.id;
 
-  // Item Master list — for pre-fill dropdown
+  // Customer Master list — for pre-fill dropdown
   const { data: items } = useQuery({
     queryKey: ['items-for-masters'],
     queryFn: () => api.get('/items?limit=500').then((r) => r.data.data as ItemMaster[]).catch(() => [] as ItemMaster[]),
@@ -134,7 +134,7 @@ function EditorModal({
           {!isEdit && (items ?? []).length > 0 && (
             <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-lg p-3">
               <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-1 block">
-                Pre-fill from Item Master
+                Pre-fill from Customer Master
               </label>
               <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
                 <option value="">— Select an item —</option>
