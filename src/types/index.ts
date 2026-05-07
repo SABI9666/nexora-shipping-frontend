@@ -281,6 +281,16 @@ export interface Account {
   subAccounts?: SubAccount[];
 }
 
+export interface ChargeItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  defaultRate?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ItemMaster {
   id: string;
   code: string;

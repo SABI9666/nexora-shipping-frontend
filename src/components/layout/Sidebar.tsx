@@ -17,6 +17,7 @@ import {
   UserCog,
   Layers,
   BookUser,
+  Tags,
   Shield,
   ChevronRight,
 } from 'lucide-react';
@@ -39,6 +40,7 @@ const mastersItems = [
   { href: '/admin/account-master', label: 'Account Master', icon: UserSquare },
   { href: '/admin/salesperson-master', label: 'Salesperson (REP) Master', icon: UserCog },
   { href: '/admin/item-master', label: 'Customer Master', icon: BookUser },
+  { href: '/admin/charge-items', label: 'Item Master', icon: Tags },
 ];
 
 const adminItems = [
