@@ -308,6 +308,21 @@ export interface Account {
   subAccounts?: SubAccount[];
 }
 
+export interface BankAccount {
+  id: string;
+  label: string;
+  bankName: string;
+  bankAddress?: string;
+  accountName: string;
+  accountNumber: string;
+  iban?: string;
+  swiftCode?: string;
+  currency?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChargeItem {
   id: string;
   code: string;

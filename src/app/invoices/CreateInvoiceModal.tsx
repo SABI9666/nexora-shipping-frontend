@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem } from '@/types';
+import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount } from '@/types';
 import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react';
@@ -145,6 +145,51 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
         .catch(() => [] as ChargeItem[]),
   });
 
+  const { data: bankAccounts } = useQuery({
+    queryKey: ['bank-accounts-for-invoice'],
+    queryFn: () =>
+      api
+        .get('/bank-accounts')
+        .then((r) => r.data.data as BankAccount[])
+        .catch(() => [] as BankAccount[]),
+  });
+
+  const [selectedBankId, setSelectedBankId] = useState('');
+
+  // Auto-select default bank when the list arrives and the form's bank fields are still empty
+  useEffect(() => {
+    if (selectedBankId) return;
+    if (!bankAccounts || bankAccounts.length === 0) return;
+    if (form.bankName || form.accountNumber) return;
+    const def = bankAccounts.find((b) => b.isDefault) ?? bankAccounts[0];
+    setSelectedBankId(def.id);
+    setForm((f) => ({
+      ...f,
+      bankName: def.bankName,
+      bankAddress: def.bankAddress ?? '',
+      accountName: def.accountName,
+      accountNumber: def.accountNumber,
+      iban: def.iban ?? '',
+      swiftCode: def.swiftCode ?? '',
+    }));
+  }, [bankAccounts, selectedBankId, form.bankName, form.accountNumber]);
+
+  const applyBank = (id: string) => {
+    setSelectedBankId(id);
+    if (!id) return;
+    const b = (bankAccounts ?? []).find((x) => x.id === id);
+    if (!b) return;
+    setForm((f) => ({
+      ...f,
+      bankName: b.bankName,
+      bankAddress: b.bankAddress ?? '',
+      accountName: b.accountName,
+      accountNumber: b.accountNumber,
+      iban: b.iban ?? '',
+      swiftCode: b.swiftCode ?? '',
+    }));
+  };
+
   const mutation = useMutation({
     mutationFn: () => {
       // Persist bank/TRN defaults locally so the next invoice pre-fills
@@ -237,6 +282,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
     setForm((f) => ({
       ...f,
       orderId,
+      jobNo: order.orderNumber,
       billToCity: order.deliveryCity,
       billToCountry: order.deliveryCountry,
       billToAddress: order.deliveryAddress,
@@ -583,9 +629,25 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
 
           {/* Bank Details */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              Bank Details <span className="text-slate-400 font-normal normal-case">(saved locally — auto-fills next time)</span>
-            </p>
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Bank Details <span className="text-slate-400 font-normal normal-case">· auto-filled, switch below if needed</span>
+              </p>
+              {(bankAccounts ?? []).length > 0 && (
+                <select
+                  value={selectedBankId}
+                  onChange={(e) => applyBank(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy/20"
+                >
+                  <option value="">— pick saved account —</option>
+                  {(bankAccounts ?? []).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label}{b.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Bank Name</label>
