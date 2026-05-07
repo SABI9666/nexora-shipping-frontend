@@ -9,7 +9,7 @@ import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 
-const CURRENCIES: InvoiceCurrency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR'];
+const CURRENCIES: InvoiceCurrency[] = ['AED', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'SAR'];
 
 const STATUSES: { value: InvoiceStatus; label: string }[] = [
   { value: 'DRAFT', label: 'Draft' },
@@ -36,13 +36,28 @@ const COUNTRIES = [
   { code: 'TH', name: 'Thailand' }, { code: 'ZA', name: 'South Africa' },
 ];
 
-interface LineItem { description: string; quantity: string; unitPrice: string }
+interface LineItem {
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  lineCurrency: string;
+  exchangeRate: string;
+  vatPercent: string;
+  remarks: string;
+}
 
 interface InvoiceForm {
   orderId: string;
   billToName: string; billToAddress: string; billToCity: string; billToCountry: string;
   billToEmail: string; billToPhone: string;
   shipFromName: string; shipFromAddress: string; shipFromCity: string; shipFromCountry: string;
+  companyTrn: string;
+  jobNo: string; originPort: string; destPort: string;
+  masterBl: string; houseBl: string; commodity: string;
+  boeNumber: string; grossWeight: string; volume: string; packages: string;
+  shipperName: string; consigneeName: string; customerRef: string;
+  bankName: string; bankAddress: string; accountName: string;
+  accountNumber: string; iban: string; swiftCode: string;
   currency: InvoiceCurrency;
   taxRate: string; shippingCost: string;
   paymentTerms: string; notes: string; dueDate: string;
@@ -50,18 +65,61 @@ interface InvoiceForm {
   items: LineItem[];
 }
 
-const emptyForm = (): InvoiceForm => ({
-  orderId: '',
-  billToName: '', billToAddress: '', billToCity: '', billToCountry: 'US',
-  billToEmail: '', billToPhone: '',
-  shipFromName: 'Nexora Express', shipFromAddress: '1 Nexora Way',
-  shipFromCity: 'London', shipFromCountry: 'GB',
-  currency: 'USD',
-  taxRate: '0', shippingCost: '0',
-  paymentTerms: 'Net 30', notes: '', dueDate: '',
-  status: 'DRAFT',
-  items: [{ description: 'Shipping Service', quantity: '1', unitPrice: '' }],
+const BANK_DEFAULTS_KEY = 'nexora.invoice.bank.defaults';
+
+interface BankDefaults {
+  companyTrn?: string;
+  bankName?: string;
+  bankAddress?: string;
+  accountName?: string;
+  accountNumber?: string;
+  iban?: string;
+  swiftCode?: string;
+}
+
+function loadBankDefaults(): BankDefaults {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(BANK_DEFAULTS_KEY);
+    return raw ? (JSON.parse(raw) as BankDefaults) : {};
+  } catch {
+    return {};
+  }
+}
+
+const emptyLine = (currency: string): LineItem => ({
+  description: '',
+  quantity: '1',
+  unitPrice: '',
+  lineCurrency: currency,
+  exchangeRate: '1',
+  vatPercent: '0',
+  remarks: '',
 });
+
+const emptyForm = (): InvoiceForm => {
+  const bd = loadBankDefaults();
+  return {
+    orderId: '',
+    billToName: '', billToAddress: '', billToCity: '', billToCountry: 'AE',
+    billToEmail: '', billToPhone: '',
+    shipFromName: 'Nexora Shipping LLC', shipFromAddress: 'Khansaheb warehouse B1-14, Al Qusais Industrial Area 1',
+    shipFromCity: 'Dubai', shipFromCountry: 'AE',
+    companyTrn: bd.companyTrn ?? '',
+    jobNo: '', originPort: '', destPort: '',
+    masterBl: '', houseBl: '', commodity: '',
+    boeNumber: '', grossWeight: '', volume: '', packages: '',
+    shipperName: '', consigneeName: '', customerRef: '',
+    bankName: bd.bankName ?? '', bankAddress: bd.bankAddress ?? '',
+    accountName: bd.accountName ?? '', accountNumber: bd.accountNumber ?? '',
+    iban: bd.iban ?? '', swiftCode: bd.swiftCode ?? '',
+    currency: 'AED',
+    taxRate: '0', shippingCost: '0',
+    paymentTerms: '', notes: '', dueDate: '',
+    status: 'DRAFT',
+    items: [{ description: '', quantity: '1', unitPrice: '', lineCurrency: 'AED', exchangeRate: '1', vatPercent: '0', remarks: '' }],
+  };
+};
 
 function calcSubtotal(items: LineItem[]) {
   return items.reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0), 0);
@@ -88,31 +146,71 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
   });
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/invoices', {
-      orderId: form.orderId || undefined,
-      billToName: form.billToName,
-      billToAddress: form.billToAddress,
-      billToCity: form.billToCity,
-      billToCountry: form.billToCountry,
-      billToEmail: form.billToEmail || undefined,
-      billToPhone: form.billToPhone || undefined,
-      shipFromName: form.shipFromName,
-      shipFromAddress: form.shipFromAddress,
-      shipFromCity: form.shipFromCity,
-      shipFromCountry: form.shipFromCountry,
-      currency: form.currency,
-      taxRate: parseFloat(form.taxRate) || 0,
-      shippingCost: parseFloat(form.shippingCost) || 0,
-      paymentTerms: form.paymentTerms || undefined,
-      notes: form.notes || undefined,
-      dueDate: form.dueDate || undefined,
-      status: form.status,
-      items: form.items.map((i) => ({
-        description: i.description,
-        quantity: parseFloat(i.quantity) || 1,
-        unitPrice: parseFloat(i.unitPrice) || 0,
-      })),
-    }),
+    mutationFn: () => {
+      // Persist bank/TRN defaults locally so the next invoice pre-fills
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(BANK_DEFAULTS_KEY, JSON.stringify({
+            companyTrn: form.companyTrn,
+            bankName: form.bankName,
+            bankAddress: form.bankAddress,
+            accountName: form.accountName,
+            accountNumber: form.accountNumber,
+            iban: form.iban,
+            swiftCode: form.swiftCode,
+          }));
+        } catch { /* ignore storage errors */ }
+      }
+      return api.post('/invoices', {
+        orderId: form.orderId || undefined,
+        billToName: form.billToName,
+        billToAddress: form.billToAddress,
+        billToCity: form.billToCity,
+        billToCountry: form.billToCountry,
+        billToEmail: form.billToEmail || undefined,
+        billToPhone: form.billToPhone || undefined,
+        shipFromName: form.shipFromName,
+        shipFromAddress: form.shipFromAddress,
+        shipFromCity: form.shipFromCity,
+        shipFromCountry: form.shipFromCountry,
+        companyTrn: form.companyTrn || undefined,
+        jobNo: form.jobNo || undefined,
+        originPort: form.originPort || undefined,
+        destPort: form.destPort || undefined,
+        masterBl: form.masterBl || undefined,
+        houseBl: form.houseBl || undefined,
+        commodity: form.commodity || undefined,
+        boeNumber: form.boeNumber || undefined,
+        grossWeight: form.grossWeight || undefined,
+        volume: form.volume || undefined,
+        packages: form.packages || undefined,
+        shipperName: form.shipperName || undefined,
+        consigneeName: form.consigneeName || undefined,
+        customerRef: form.customerRef || undefined,
+        bankName: form.bankName || undefined,
+        bankAddress: form.bankAddress || undefined,
+        accountName: form.accountName || undefined,
+        accountNumber: form.accountNumber || undefined,
+        iban: form.iban || undefined,
+        swiftCode: form.swiftCode || undefined,
+        currency: form.currency,
+        taxRate: parseFloat(form.taxRate) || 0,
+        shippingCost: parseFloat(form.shippingCost) || 0,
+        paymentTerms: form.paymentTerms || undefined,
+        notes: form.notes || undefined,
+        dueDate: form.dueDate || undefined,
+        status: form.status,
+        items: form.items.map((i) => ({
+          description: i.description,
+          quantity: parseFloat(i.quantity) || 1,
+          unitPrice: parseFloat(i.unitPrice) || 0,
+          lineCurrency: i.lineCurrency || form.currency,
+          exchangeRate: parseFloat(i.exchangeRate) || 1,
+          vatPercent: parseFloat(i.vatPercent) || 0,
+          remarks: i.remarks || undefined,
+        })),
+      });
+    },
     onSuccess: () => { onSuccess(); onClose(); },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setError(err.response?.data?.message || 'Failed to create invoice.');
@@ -127,7 +225,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       return { ...f, items };
     });
   const addItem = () =>
-    setForm((f) => ({ ...f, items: [...f.items, { description: '', quantity: '1', unitPrice: '' }] }));
+    setForm((f) => ({ ...f, items: [...f.items, emptyLine(f.currency)] }));
   const removeItem = (idx: number) =>
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
@@ -142,7 +240,15 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       billToCity: order.deliveryCity,
       billToCountry: order.deliveryCountry,
       billToAddress: order.deliveryAddress,
-      items: [{ description: `Shipping: ${order.packageDescription}`, quantity: '1', unitPrice: String(order.price ?? '') }],
+      items: [{
+        description: `Shipping: ${order.packageDescription}`,
+        quantity: '1',
+        unitPrice: String(order.price ?? ''),
+        lineCurrency: f.currency,
+        exchangeRate: '1',
+        vatPercent: '0',
+        remarks: '',
+      }],
     }));
   }, [orders]);
 
@@ -278,6 +384,85 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
             )}
           </div>
 
+          {/* Shipment Details */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Shipment Details</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>Job No</label>
+                <input value={form.jobNo} onChange={(e) => set('jobNo', e.target.value)}
+                  placeholder="NEXDXLTR26-00027" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Customer Ref</label>
+                <input value={form.customerRef} onChange={(e) => set('customerRef', e.target.value)}
+                  placeholder="auto: INV-{invoice no}" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Company TRN</label>
+                <input value={form.companyTrn} onChange={(e) => set('companyTrn', e.target.value)}
+                  placeholder="105413106300003" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Origin / POR</label>
+                <input value={form.originPort} onChange={(e) => set('originPort', e.target.value)}
+                  placeholder="DUBAI" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Destination Port</label>
+                <input value={form.destPort} onChange={(e) => set('destPort', e.target.value)}
+                  placeholder="DUBAI" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Commodity</label>
+                <input value={form.commodity} onChange={(e) => set('commodity', e.target.value)}
+                  placeholder="SPARE PARTS" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>MB/L</label>
+                <input value={form.masterBl} onChange={(e) => set('masterBl', e.target.value)}
+                  placeholder="DOC 00027" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>HB/L</label>
+                <input value={form.houseBl} onChange={(e) => set('houseBl', e.target.value)}
+                  className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>BOE No.</label>
+                <input value={form.boeNumber} onChange={(e) => set('boeNumber', e.target.value)}
+                  placeholder="502-00212667-26" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Gross Weight</label>
+                <input value={form.grossWeight} onChange={(e) => set('grossWeight', e.target.value)}
+                  placeholder="522 KGS" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Volume</label>
+                <input value={form.volume} onChange={(e) => set('volume', e.target.value)}
+                  placeholder="" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Packages</label>
+                <input value={form.packages} onChange={(e) => set('packages', e.target.value)}
+                  placeholder="4 PKGS" className={inputCls} />
+              </div>
+              <div className="col-span-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Shipper</label>
+                  <input value={form.shipperName} onChange={(e) => set('shipperName', e.target.value)}
+                    placeholder="FIRST ACCESS SHIPPING" className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Consignee</label>
+                  <input value={form.consigneeName} onChange={(e) => set('consigneeName', e.target.value)}
+                    placeholder="HITECH TRANSPORT LLC (BRANCH)" className={inputCls} />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <datalist id="invoice-charge-items">
               {(chargeItems ?? []).map((c) => (
@@ -327,6 +512,35 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                       </button>
                     )}
                   </div>
+                  <div className="col-span-12 grid grid-cols-12 gap-2 -mt-1 mb-2 pl-1">
+                    <div className="col-span-2">
+                      <label className={`${labelCls} text-[10px]`}>Curr</label>
+                      <input value={item.lineCurrency}
+                        onChange={(e) => setItem(idx, 'lineCurrency', e.target.value.toUpperCase())}
+                        placeholder={form.currency} maxLength={3}
+                        className={`${inputCls} text-xs py-1.5`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={`${labelCls} text-[10px]`}>Ex Rate</label>
+                      <input type="number" min="0" step="0.0001"
+                        value={item.exchangeRate}
+                        onChange={(e) => setItem(idx, 'exchangeRate', e.target.value)}
+                        className={`${inputCls} text-xs py-1.5`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={`${labelCls} text-[10px]`}>VAT %</label>
+                      <input type="number" min="0" max="100" step="0.01"
+                        value={item.vatPercent}
+                        onChange={(e) => setItem(idx, 'vatPercent', e.target.value)}
+                        className={`${inputCls} text-xs py-1.5`} />
+                    </div>
+                    <div className="col-span-6">
+                      <label className={`${labelCls} text-[10px]`}>Remarks</label>
+                      <input value={item.remarks}
+                        onChange={(e) => setItem(idx, 'remarks', e.target.value)}
+                        className={`${inputCls} text-xs py-1.5`} />
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -363,6 +577,45 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                   <span>Total ({form.currency})</span>
                   <span className="text-brand-navy">{formatCurrency(total)}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bank Details */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+              Bank Details <span className="text-slate-400 font-normal normal-case">(saved locally — auto-fills next time)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Bank Name</label>
+                <input value={form.bankName} onChange={(e) => set('bankName', e.target.value)}
+                  placeholder="Abu Dhabi Commercial Bank PJSC" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Bank Address</label>
+                <input value={form.bankAddress} onChange={(e) => set('bankAddress', e.target.value)}
+                  placeholder="AL RIGGAH ROAD" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Account Name</label>
+                <input value={form.accountName} onChange={(e) => set('accountName', e.target.value)}
+                  placeholder="NEXORA SHIPPING LLC" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Account Number</label>
+                <input value={form.accountNumber} onChange={(e) => set('accountNumber', e.target.value)}
+                  placeholder="14505966920001" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>IBAN</label>
+                <input value={form.iban} onChange={(e) => set('iban', e.target.value)}
+                  placeholder="AE060030014505966920001" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Swift Code</label>
+                <input value={form.swiftCode} onChange={(e) => set('swiftCode', e.target.value)}
+                  placeholder="ADCBAEAA" className={inputCls} />
               </div>
             </div>
           </div>

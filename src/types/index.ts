@@ -107,7 +107,7 @@ export interface Document {
 }
 
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-export type InvoiceCurrency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR';
+export type InvoiceCurrency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR' | 'AED' | 'SAR';
 
 export interface InvoiceItem {
   id: string;
@@ -116,6 +116,12 @@ export interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   amount: number;
+  lineCurrency?: string;
+  exchangeRate?: number;
+  vatPercent?: number;
+  vatAmount?: number;
+  totalInBase?: number;
+  remarks?: string;
 }
 
 export interface Invoice {
@@ -134,6 +140,27 @@ export interface Invoice {
   shipFromAddress: string;
   shipFromCity: string;
   shipFromCountry: string;
+  companyTrn?: string;
+  jobNo?: string;
+  originPort?: string;
+  destPort?: string;
+  masterBl?: string;
+  houseBl?: string;
+  commodity?: string;
+  boeNumber?: string;
+  grossWeight?: string;
+  volume?: string;
+  packages?: string;
+  shipperName?: string;
+  consigneeName?: string;
+  customerRef?: string;
+  bankName?: string;
+  bankAddress?: string;
+  accountName?: string;
+  accountNumber?: string;
+  iban?: string;
+  swiftCode?: string;
+  amountInWords?: string;
   currency: InvoiceCurrency;
   subtotal: number;
   taxRate: number;
