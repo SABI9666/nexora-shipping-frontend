@@ -21,7 +21,7 @@ const STATUSES: { value: InvoiceStatus; label: string }[] = [
 ];
 
 const PAYMENT_TERMS_OPTIONS = [
-  'Net 7', 'Net 15', 'Net 30', 'Net 60', 'Due on Receipt', 'Custom',
+  'Cash', 'Net 7', 'Net 15', 'Net 30', 'Net 60', 'Due on Receipt', 'Custom',
 ];
 
 // Country list now lives in src/lib/countries.ts and is shared across forms.
