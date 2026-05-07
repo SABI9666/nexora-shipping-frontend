@@ -391,7 +391,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
               <div>
                 <label className={labelCls}>Job No <span className="text-slate-400 font-normal">· auto</span></label>
                 <input value={form.jobNo} onChange={(e) => set('jobNo', e.target.value)}
-                  placeholder="auto: NEXDXLTR{YY}-{NNNNN}" className={inputCls} />
+                  placeholder="auto: NEXDX{YY}-{NNNNN}" className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Customer Ref <span className="text-slate-400 font-normal">· auto</span></label>
