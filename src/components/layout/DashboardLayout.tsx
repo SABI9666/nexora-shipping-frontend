@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Sidebar } from './Sidebar';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, LogOut, ChevronDown, Shield } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -12,14 +12,34 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, title }: DashboardLayoutProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout, isAdmin } = useAuth();
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/auth/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
 
   if (loading) {
     return (
@@ -57,8 +77,43 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               <Bell className="w-5 h-5" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-red rounded-full" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-brand-navy flex items-center justify-center text-white text-xs font-bold">
-              {user.firstName[0]}{user.lastName[0]}
+
+            {/* User menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-slate-100 transition-colors"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-brand-red' : 'bg-brand-navy'}`}>
+                  {user.firstName[0]}{user.lastName[0]}
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-40">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{user.firstName} {user.lastName}</p>
+                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {isAdmin && <Shield className="w-3 h-3 text-brand-red" />}
+                      <span className={`text-[11px] font-semibold ${isAdmin ? 'text-brand-red' : 'text-slate-500'}`}>
+                        {user.role}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); logout(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    role="menuitem"
+                  >
+                    <LogOut className="w-4 h-4 text-slate-400" />
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
