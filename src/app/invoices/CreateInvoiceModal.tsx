@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { COUNTRIES, inferCountryCode, normalizeCountryCode } from '@/lib/countries';
 import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount } from '@/types';
 import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
@@ -23,18 +24,7 @@ const PAYMENT_TERMS_OPTIONS = [
   'Net 7', 'Net 15', 'Net 30', 'Net 60', 'Due on Receipt', 'Custom',
 ];
 
-const COUNTRIES = [
-  { code: 'US', name: 'United States' }, { code: 'GB', name: 'United Kingdom' },
-  { code: 'CA', name: 'Canada' }, { code: 'AU', name: 'Australia' },
-  { code: 'DE', name: 'Germany' }, { code: 'FR', name: 'France' },
-  { code: 'IN', name: 'India' }, { code: 'CN', name: 'China' },
-  { code: 'JP', name: 'Japan' }, { code: 'SG', name: 'Singapore' },
-  { code: 'AE', name: 'UAE' }, { code: 'NL', name: 'Netherlands' },
-  { code: 'BR', name: 'Brazil' }, { code: 'MX', name: 'Mexico' },
-  { code: 'PK', name: 'Pakistan' }, { code: 'BD', name: 'Bangladesh' },
-  { code: 'PH', name: 'Philippines' }, { code: 'MY', name: 'Malaysia' },
-  { code: 'TH', name: 'Thailand' }, { code: 'ZA', name: 'South Africa' },
-];
+// Country list now lives in src/lib/countries.ts and is shared across forms.
 
 interface LineItem {
   description: string;
@@ -101,10 +91,10 @@ const emptyForm = (): InvoiceForm => {
   const bd = loadBankDefaults();
   return {
     orderId: '',
-    billToName: '', billToAddress: '', billToCity: '', billToCountry: 'AE',
+    billToName: '', billToAddress: '', billToCity: '', billToCountry: 'ARE',
     billToEmail: '', billToPhone: '',
     shipFromName: 'Nexora Shipping LLC', shipFromAddress: 'Khansaheb warehouse B1-14, Al Qusais Industrial Area 1',
-    shipFromCity: 'Dubai', shipFromCountry: 'AE',
+    shipFromCity: 'Dubai', shipFromCountry: 'ARE',
     companyTrn: bd.companyTrn ?? '',
     jobNo: '', originPort: '', destPort: '',
     masterBl: '', houseBl: '', commodity: '',
@@ -171,6 +161,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       accountNumber: def.accountNumber,
       iban: def.iban ?? '',
       swiftCode: def.swiftCode ?? '',
+      companyTrn: f.companyTrn || (def.companyTrn ?? ''),
     }));
   }, [bankAccounts, selectedBankId, form.bankName, form.accountNumber]);
 
@@ -187,6 +178,9 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       accountNumber: b.accountNumber,
       iban: b.iban ?? '',
       swiftCode: b.swiftCode ?? '',
+      // Pull TRN from the chosen bank when the form's TRN is still empty
+      // so the user can override after picking.
+      companyTrn: f.companyTrn || (b.companyTrn ?? ''),
     }));
   };
 
@@ -279,12 +273,16 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
     if (!orderId) return;
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
+    const inferred =
+      normalizeCountryCode(order.deliveryCountry) ||
+      inferCountryCode(`${order.deliveryAddress} ${order.deliveryCity}`) ||
+      '';
     setForm((f) => ({
       ...f,
       orderId,
       jobNo: order.orderNumber,
       billToCity: order.deliveryCity,
-      billToCountry: order.deliveryCountry,
+      billToCountry: inferred || f.billToCountry,
       billToAddress: order.deliveryAddress,
       items: [{
         description: `Shipping: ${order.packageDescription}`,
@@ -373,17 +371,33 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Address *</label>
-                <input value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)}
-                  placeholder="123 Main Street" className={inputCls} />
+                <input
+                  value={form.billToAddress}
+                  onChange={(e) => set('billToAddress', e.target.value)}
+                  onBlur={(e) => {
+                    const code = inferCountryCode(`${e.target.value} ${form.billToCity}`);
+                    if (code) set('billToCountry', code);
+                  }}
+                  placeholder="123 Main Street"
+                  className={inputCls}
+                />
               </div>
               <div>
                 <label className={labelCls}>City *</label>
-                <input value={form.billToCity} onChange={(e) => set('billToCity', e.target.value)}
-                  placeholder="New York" className={inputCls} />
+                <input
+                  value={form.billToCity}
+                  onChange={(e) => set('billToCity', e.target.value)}
+                  onBlur={(e) => {
+                    const code = inferCountryCode(`${form.billToAddress} ${e.target.value}`);
+                    if (code) set('billToCountry', code);
+                  }}
+                  placeholder="Dubai"
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className={labelCls}>Country *</label>
-                <select value={form.billToCountry} onChange={(e) => set('billToCountry', e.target.value)} className={inputCls}>
+                <label className={labelCls}>Country * <span className="text-slate-400 font-normal">· auto</span></label>
+                <select value={normalizeCountryCode(form.billToCountry)} onChange={(e) => set('billToCountry', e.target.value)} className={inputCls}>
                   {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </select>
               </div>
@@ -422,7 +436,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                 </div>
                 <div>
                   <label className={labelCls}>Country</label>
-                  <select value={form.shipFromCountry} onChange={(e) => set('shipFromCountry', e.target.value)} className={inputCls}>
+                  <select value={normalizeCountryCode(form.shipFromCountry)} onChange={(e) => set('shipFromCountry', e.target.value)} className={inputCls}>
                     {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                   </select>
                 </div>
@@ -445,7 +459,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                   placeholder="auto: INV-{invoice no}" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Company TRN</label>
+                <label className={labelCls}>Company TRN <span className="text-slate-400 font-normal">· auto from bank</span></label>
                 <input value={form.companyTrn} onChange={(e) => set('companyTrn', e.target.value)}
                   placeholder="105413106300003" className={inputCls} />
               </div>

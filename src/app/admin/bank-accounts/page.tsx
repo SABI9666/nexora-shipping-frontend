@@ -17,12 +17,14 @@ interface FormState {
   iban: string;
   swiftCode: string;
   currency: string;
+  companyTrn: string;
   isDefault: boolean;
 }
 
 const empty = (): FormState => ({
   label: '', bankName: '', bankAddress: '', accountName: '',
-  accountNumber: '', iban: '', swiftCode: '', currency: 'AED', isDefault: false,
+  accountNumber: '', iban: '', swiftCode: '', currency: 'AED',
+  companyTrn: '', isDefault: false,
 });
 
 function EditorModal({
@@ -36,7 +38,8 @@ function EditorModal({
     mutationFn: () => {
       const payload = { ...form, bankAddress: form.bankAddress || undefined,
         iban: form.iban || undefined, swiftCode: form.swiftCode || undefined,
-        currency: form.currency || undefined };
+        currency: form.currency || undefined,
+        companyTrn: form.companyTrn || undefined };
       return isEdit ? api.patch(`/bank-accounts/${form.id}`, payload)
                     : api.post('/bank-accounts', payload);
     },
@@ -109,7 +112,12 @@ function EditorModal({
               <input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
                 placeholder="AED" maxLength={3} className={inputCls} />
             </div>
-            <div className="flex items-end">
+            <div>
+              <label className={labelCls}>Company TRN</label>
+              <input value={form.companyTrn} onChange={(e) => setForm({ ...form, companyTrn: e.target.value })}
+                placeholder="105413106300003" className={inputCls} />
+            </div>
+            <div className="col-span-2 flex items-end">
               <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
                 <input type="checkbox" checked={form.isDefault}
                   onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
@@ -204,7 +212,7 @@ export default function BankAccountsPage() {
                           bankAddress: b.bankAddress ?? '', accountName: b.accountName,
                           accountNumber: b.accountNumber, iban: b.iban ?? '',
                           swiftCode: b.swiftCode ?? '', currency: b.currency ?? '',
-                          isDefault: b.isDefault,
+                          companyTrn: b.companyTrn ?? '', isDefault: b.isDefault,
                         })}
                         className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg"
                         title="Edit"

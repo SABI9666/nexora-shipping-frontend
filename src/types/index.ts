@@ -318,6 +318,7 @@ export interface BankAccount {
   iban?: string;
   swiftCode?: string;
   currency?: string;
+  companyTrn?: string;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
