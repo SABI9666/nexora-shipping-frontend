@@ -351,19 +351,42 @@ export default function QuotationsPage() {
         )}
       </div>
 
-      {quotations.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
-          <span>{quotations.length} quotation{quotations.length !== 1 ? 's' : ''}</span>
-          <span>·</span>
-          <span>Accepted total: <span className="font-semibold text-green-700">
-            {formatCurrency(quotations.filter((q) => q.status === 'ACCEPTED').reduce((s, q) => s + q.total, 0))}
-          </span></span>
-          <span>·</span>
-          <span>Pending (sent): <span className="font-semibold text-slate-800">
-            {formatCurrency(quotations.filter((q) => q.status === 'SENT').reduce((s, q) => s + q.total, 0))}
-          </span></span>
-        </div>
-      )}
+      {quotations.length > 0 && (() => {
+        const sumByCurrency = (predicate: (q: typeof quotations[number]) => boolean) =>
+          Object.entries(
+            quotations.filter(predicate).reduce<Record<string, number>>((acc, q) => {
+              const cur = q.currency || 'USD';
+              acc[cur] = (acc[cur] ?? 0) + q.total;
+              return acc;
+            }, {})
+          ).sort(([a], [b]) => a.localeCompare(b));
+        const accepted = sumByCurrency((q) => q.status === 'ACCEPTED');
+        const sent = sumByCurrency((q) => q.status === 'SENT');
+        const renderTotals = (entries: [string, number][], emptyClass: string) =>
+          entries.length === 0
+            ? <span className={emptyClass}>—</span>
+            : entries.map(([cur, amount], idx) => (
+                <span key={cur}>
+                  {idx > 0 && <span className="text-slate-300 mx-1.5">·</span>}
+                  <span className="font-semibold">{formatCurrency(amount, cur)}</span>
+                </span>
+              ));
+        return (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+            <span>{quotations.length} quotation{quotations.length !== 1 ? 's' : ''}</span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Accepted:
+              <span className="text-green-700">{renderTotals(accepted, 'text-slate-400')}</span>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Pending (sent):
+              <span className="text-slate-800">{renderTotals(sent, 'text-slate-400')}</span>
+            </span>
+          </div>
+        );
+      })()}
 
       {showCreate && (
         <CreateQuotationModal

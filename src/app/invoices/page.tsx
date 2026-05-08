@@ -343,19 +343,42 @@ export default function InvoicesPage() {
         )}
       </div>
 
-      {invoices.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
-          <span>{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
-          <span>·</span>
-          <span>Total outstanding: <span className="font-semibold text-slate-800">
-            {formatCurrency(invoices.filter((i) => i.status !== 'PAID' && i.status !== 'CANCELLED').reduce((s, i) => s + i.total, 0))}
-          </span></span>
-          <span>·</span>
-          <span>Paid: <span className="font-semibold text-green-700">
-            {formatCurrency(invoices.filter((i) => i.status === 'PAID').reduce((s, i) => s + i.total, 0))}
-          </span></span>
-        </div>
-      )}
+      {invoices.length > 0 && (() => {
+        const sumByCurrency = (predicate: (i: typeof invoices[number]) => boolean) =>
+          Object.entries(
+            invoices.filter(predicate).reduce<Record<string, number>>((acc, i) => {
+              const cur = i.currency || 'USD';
+              acc[cur] = (acc[cur] ?? 0) + i.total;
+              return acc;
+            }, {})
+          ).sort(([a], [b]) => a.localeCompare(b));
+        const outstanding = sumByCurrency((i) => i.status !== 'PAID' && i.status !== 'CANCELLED');
+        const paid = sumByCurrency((i) => i.status === 'PAID');
+        const renderTotals = (entries: [string, number][], emptyClass: string) =>
+          entries.length === 0
+            ? <span className={emptyClass}>—</span>
+            : entries.map(([cur, amount], idx) => (
+                <span key={cur}>
+                  {idx > 0 && <span className="text-slate-300 mx-1.5">·</span>}
+                  <span className="font-semibold">{formatCurrency(amount, cur)}</span>
+                </span>
+              ));
+        return (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+            <span>{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Outstanding:
+              <span className="text-slate-800">{renderTotals(outstanding, 'text-slate-400')}</span>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Paid:
+              <span className="text-green-700">{renderTotals(paid, 'text-slate-400')}</span>
+            </span>
+          </div>
+        );
+      })()}
 
       {showCreate && (
         <CreateInvoiceModal
