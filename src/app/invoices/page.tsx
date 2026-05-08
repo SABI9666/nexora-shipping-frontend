@@ -140,8 +140,8 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
                     <tr key={item.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-800">{item.description}</td>
                       <td className="px-4 py-3 text-right text-slate-600">{item.quantity}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.unitPrice)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(item.amount)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.unitPrice, invoice.currency)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(item.amount, invoice.currency)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -151,16 +151,16 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: Invoice; onClose: (
 
           <div className="flex justify-end">
             <div className="w-64 space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(invoice.subtotal)}</span></div>
+              <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(invoice.subtotal, invoice.currency)}</span></div>
               {invoice.taxRate > 0 && (
-                <div className="flex justify-between text-slate-600"><span>Tax ({invoice.taxRate}%)</span><span>{formatCurrency(invoice.taxAmount)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Tax ({invoice.taxRate}%)</span><span>{formatCurrency(invoice.taxAmount, invoice.currency)}</span></div>
               )}
               {invoice.shippingCost > 0 && (
-                <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(invoice.shippingCost)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(invoice.shippingCost, invoice.currency)}</span></div>
               )}
               <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
                 <span>Total ({invoice.currency})</span>
-                <span className="text-brand-navy text-base">{formatCurrency(invoice.total)}</span>
+                <span className="text-brand-navy text-base">{formatCurrency(invoice.total, invoice.currency)}</span>
               </div>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function InvoicesPage() {
                         ) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-slate-900">
-                        {formatCurrency(inv.total)}
+                        {formatCurrency(inv.total, inv.currency)}
                         <span className="text-xs font-normal text-slate-400 ml-1">{inv.currency}</span>
                       </td>
                       <td className="px-4 py-3.5">
