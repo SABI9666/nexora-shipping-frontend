@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -260,10 +260,16 @@ function DeleteConfirm({ orderNumber, onConfirm, onCancel, isPending }: DeleteCo
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+
+  // Open the edit modal automatically when navigated here with ?edit=1
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') setShowEdit(true);
+  }, [searchParams]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['order', id],

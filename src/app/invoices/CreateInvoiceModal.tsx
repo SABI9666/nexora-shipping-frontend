@@ -632,16 +632,16 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
           <div className="bg-slate-50 rounded-xl p-4">
             <div className="flex justify-end">
               <div className="w-56 space-y-1 text-sm">
-                <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal, form.currency)}</span></div>
                 {(parseFloat(form.taxRate) || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600"><span>Tax ({form.taxRate}%)</span><span>{formatCurrency(tax)}</span></div>
+                  <div className="flex justify-between text-slate-600"><span>Tax ({form.taxRate}%)</span><span>{formatCurrency(tax, form.currency)}</span></div>
                 )}
                 {(parseFloat(form.shippingCost) || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(shipping)}</span></div>
+                  <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(shipping, form.currency)}</span></div>
                 )}
                 <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2">
                   <span>Total ({form.currency})</span>
-                  <span className="text-brand-navy">{formatCurrency(total)}</span>
+                  <span className="text-brand-navy">{formatCurrency(total, form.currency)}</span>
                 </div>
               </div>
             </div>
