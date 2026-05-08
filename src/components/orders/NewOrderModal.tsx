@@ -17,7 +17,7 @@ const schema = z.object({
   deliveryCity: z.string().min(2, 'Required'),
   deliveryCountry: z.string().length(3, 'Use 3-letter country code'),
   packageDescription: z.string().min(5, 'Required'),
-  weight: z.number({ coerce: true }).positive().max(1000),
+  weight: z.number({ coerce: true }).positive(),
   cbm: z.number({ coerce: true }).positive().optional(),
   specialInstructions: z.string().optional(),
 });
