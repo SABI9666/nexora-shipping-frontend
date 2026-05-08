@@ -95,7 +95,7 @@ const emptyForm = (): InvoiceForm => {
     billToEmail: '', billToPhone: '',
     shipFromName: 'Nexora Shipping LLC', shipFromAddress: 'Khansaheb warehouse B1-14, Al Qusais Industrial Area 1',
     shipFromCity: 'Dubai', shipFromCountry: 'ARE',
-    companyTrn: bd.companyTrn ?? '',
+    companyTrn: bd.companyTrn ?? '105413106300003',
     jobNo: '', originPort: '', destPort: '',
     masterBl: '', houseBl: '', commodity: '',
     boeNumber: '', grossWeight: '', volume: '', packages: '',
