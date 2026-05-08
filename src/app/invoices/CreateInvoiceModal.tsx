@@ -50,7 +50,7 @@ interface InvoiceForm {
   accountNumber: string; iban: string; swiftCode: string;
   currency: InvoiceCurrency;
   taxRate: string; shippingCost: string;
-  paymentTerms: string; notes: string; dueDate: string;
+  paymentTerms: string; notes: string; invoiceDate: string; dueDate: string;
   status: InvoiceStatus;
   items: LineItem[];
 }
@@ -105,7 +105,8 @@ const emptyForm = (): InvoiceForm => {
     iban: bd.iban ?? '', swiftCode: bd.swiftCode ?? '',
     currency: 'AED',
     taxRate: '0', shippingCost: '0',
-    paymentTerms: '', notes: '', dueDate: '',
+    paymentTerms: '', notes: '',
+    invoiceDate: new Date().toISOString().split('T')[0], dueDate: '',
     status: 'DRAFT',
     items: [{ description: '', quantity: '1', unitPrice: '', lineCurrency: 'AED', exchangeRate: '1', vatPercent: '0', remarks: '' }],
   };
@@ -237,6 +238,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
         shippingCost: parseFloat(form.shippingCost) || 0,
         paymentTerms: form.paymentTerms || undefined,
         notes: form.notes || undefined,
+        invoiceDate: form.invoiceDate || undefined,
         dueDate: form.dueDate || undefined,
         status: form.status,
         items: form.items.map((i) => ({
@@ -351,9 +353,13 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Invoice Date</label>
-              <input type="date" disabled value={new Date().toISOString().split('T')[0]}
-                className={`${inputCls} bg-slate-50 text-slate-400`} />
+              <label className={labelCls}>Invoice Date <span className="text-slate-400 font-normal">· editable, supports backdating</span></label>
+              <input
+                type="date"
+                value={form.invoiceDate}
+                onChange={(e) => set('invoiceDate', e.target.value)}
+                className={inputCls}
+              />
             </div>
             <div>
               <label className={labelCls}>Due Date <span className="text-slate-400 font-normal">(optional)</span></label>
