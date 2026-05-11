@@ -116,6 +116,16 @@ function calcSubtotal(items: LineItem[]) {
   return items.reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0), 0);
 }
 
+function lineNet(i: LineItem): number {
+  return (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0);
+}
+function lineVat(i: LineItem): number {
+  return lineNet(i) * ((parseFloat(i.vatPercent) || 0) / 100);
+}
+function calcLineVatTotal(items: LineItem[]): number {
+  return items.reduce((s, i) => s + lineVat(i), 0);
+}
+
 export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState<InvoiceForm>(emptyForm());
   const [error, setError] = useState('');
@@ -305,7 +315,8 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
   }, [orders]);
 
   const subtotal = calcSubtotal(form.items);
-  const tax = subtotal * ((parseFloat(form.taxRate) || 0) / 100);
+  const lineVatTotal = calcLineVatTotal(form.items);
+  const tax = lineVatTotal + subtotal * ((parseFloat(form.taxRate) || 0) / 100);
   const shipping = parseFloat(form.shippingCost) || 0;
   const total = subtotal + tax + shipping;
 
@@ -615,6 +626,16 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                         placeholder="Optional note — e.g. container no., reference, payment ref"
                         className={`${inputCls} text-xs py-1.5`} />
                     </div>
+                    {/* Live line-item preview: Net · VAT · Total */}
+                    {(lineNet(item) > 0 || lineVat(item) > 0) && (
+                      <div className="col-span-12 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500 pl-1 -mt-1">
+                        <span>Net <span className="text-slate-700 font-medium">{formatCurrency(lineNet(item), item.lineCurrency || form.currency)}</span></span>
+                        <span>·</span>
+                        <span>VAT <span className="text-slate-700 font-medium">{formatCurrency(lineVat(item), item.lineCurrency || form.currency)}</span></span>
+                        <span>·</span>
+                        <span>Total <span className="text-brand-navy font-semibold">{formatCurrency(lineNet(item) + lineVat(item), item.lineCurrency || form.currency)}</span></span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -642,8 +663,11 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
             <div className="flex justify-end">
               <div className="w-56 space-y-1 text-sm">
                 <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal, form.currency)}</span></div>
-                {(parseFloat(form.taxRate) || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600"><span>Tax ({form.taxRate}%)</span><span>{formatCurrency(tax, form.currency)}</span></div>
+                {(lineVatTotal > 0 || (parseFloat(form.taxRate) || 0) > 0) && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>VAT</span>
+                    <span>{formatCurrency(tax, form.currency)}</span>
+                  </div>
                 )}
                 {(parseFloat(form.shippingCost) || 0) > 0 && (
                   <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(shipping, form.currency)}</span></div>
