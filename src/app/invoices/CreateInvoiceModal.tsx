@@ -286,6 +286,12 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       billToCity: order.deliveryCity,
       billToCountry: inferred || f.billToCountry,
       billToAddress: order.deliveryAddress,
+      // Auto-fill shipment details from the order — user can still edit
+      originPort: f.originPort || order.pickupCity || '',
+      destPort: f.destPort || order.deliveryCity || '',
+      volume: f.volume || (order.cbm != null ? `${order.cbm} CBM` : ''),
+      grossWeight: f.grossWeight || (order.weight != null ? `${order.weight} KGS` : ''),
+      commodity: f.commodity || order.packageDescription || '',
       items: [{
         description: `Shipping: ${order.packageDescription}`,
         quantity: '1',
@@ -470,19 +476,19 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                   placeholder="105413106300003" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Origin / POR</label>
+                <label className={labelCls}>Origin / POR <span className="text-slate-400 font-normal">· auto from order</span></label>
                 <input value={form.originPort} onChange={(e) => set('originPort', e.target.value)}
-                  placeholder="DUBAI" className={inputCls} />
+                  placeholder="auto-filled from linked order" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Destination Port</label>
+                <label className={labelCls}>Destination Port <span className="text-slate-400 font-normal">· auto from order</span></label>
                 <input value={form.destPort} onChange={(e) => set('destPort', e.target.value)}
-                  placeholder="DUBAI" className={inputCls} />
+                  placeholder="auto-filled from linked order" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Commodity</label>
+                <label className={labelCls}>Commodity <span className="text-slate-400 font-normal">· auto from order</span></label>
                 <input value={form.commodity} onChange={(e) => set('commodity', e.target.value)}
-                  placeholder="SPARE PARTS" className={inputCls} />
+                  placeholder="auto-filled from linked order" className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>MB/L</label>
@@ -500,14 +506,14 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                   placeholder="502-00212667-26" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Gross Weight</label>
+                <label className={labelCls}>Gross Weight <span className="text-slate-400 font-normal">· auto from order</span></label>
                 <input value={form.grossWeight} onChange={(e) => set('grossWeight', e.target.value)}
-                  placeholder="522 KGS" className={inputCls} />
+                  placeholder="auto-filled from linked order" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Volume</label>
+                <label className={labelCls}>Volume <span className="text-slate-400 font-normal">· auto from order CBM</span></label>
                 <input value={form.volume} onChange={(e) => set('volume', e.target.value)}
-                  placeholder="" className={inputCls} />
+                  placeholder="auto-filled from linked order" className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Packages</label>
