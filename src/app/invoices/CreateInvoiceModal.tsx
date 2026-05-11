@@ -601,9 +601,12 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
                         className={`${inputCls} text-xs py-1.5`} />
                     </div>
                     <div className="col-span-6">
-                      <label className={`${labelCls} text-[10px]`}>Remarks</label>
+                      <label className={`${labelCls} text-[10px]`}>
+                        Remarks <span className="text-slate-400 font-normal normal-case">· prints on right side of invoice</span>
+                      </label>
                       <input value={item.remarks}
                         onChange={(e) => setItem(idx, 'remarks', e.target.value)}
+                        placeholder="Optional note — e.g. container no., reference, payment ref"
                         className={`${inputCls} text-xs py-1.5`} />
                     </div>
                   </div>
