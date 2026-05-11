@@ -9,7 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Invoice, InvoiceStatus } from '@/types';
 import {
-  Plus, FileText, Trash2, Eye, X, Search, Receipt, Download, Loader2, FileType,
+  Plus, FileText, Trash2, Eye, Pencil, X, Search, Receipt, Download, Loader2, FileType,
 } from 'lucide-react';
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 
@@ -182,6 +182,7 @@ export default function InvoicesPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
 
@@ -325,6 +326,13 @@ export default function InvoicesPage() {
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => setEditInvoice(inv)}
+                            className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => { if (confirm(`Delete invoice ${inv.invoiceNumber}?`)) deleteMutation.mutate(inv.id); }}
                             disabled={deleteMutation.isPending}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
@@ -388,6 +396,13 @@ export default function InvoicesPage() {
       )}
       {viewInvoice && (
         <InvoiceDetailModal invoice={viewInvoice} onClose={() => setViewInvoice(null)} />
+      )}
+      {editInvoice && (
+        <CreateInvoiceModal
+          editing={editInvoice}
+          onClose={() => setEditInvoice(null)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['invoices'] })}
+        />
       )}
     </DashboardLayout>
   );
