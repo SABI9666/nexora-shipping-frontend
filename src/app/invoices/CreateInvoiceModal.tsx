@@ -5,7 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { COUNTRIES, inferCountryCode, normalizeCountryCode } from '@/lib/countries';
-import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount } from '@/types';
+import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount, Invoice } from '@/types';
 import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react';
@@ -112,6 +112,63 @@ const emptyForm = (): InvoiceForm => {
   };
 };
 
+// Map an existing Invoice → the form-state shape used by this modal.
+function formFromInvoice(inv: Invoice): InvoiceForm {
+  const isoDate = (s?: string) => (s ? new Date(s).toISOString().split('T')[0] : '');
+  return {
+    orderId: inv.orderId ?? '',
+    billToName: inv.billToName ?? '',
+    billToAddress: inv.billToAddress ?? '',
+    billToCity: inv.billToCity ?? '',
+    billToCountry: inv.billToCountry ?? 'ARE',
+    billToEmail: inv.billToEmail ?? '',
+    billToPhone: inv.billToPhone ?? '',
+    shipFromName: inv.shipFromName ?? 'Nexora Shipping LLC',
+    shipFromAddress: inv.shipFromAddress ?? '',
+    shipFromCity: inv.shipFromCity ?? '',
+    shipFromCountry: inv.shipFromCountry ?? 'ARE',
+    companyTrn: inv.companyTrn ?? '105413106300003',
+    jobNo: inv.jobNo ?? '',
+    originPort: inv.originPort ?? '',
+    destPort: inv.destPort ?? '',
+    masterBl: inv.masterBl ?? '',
+    houseBl: inv.houseBl ?? '',
+    commodity: inv.commodity ?? '',
+    boeNumber: inv.boeNumber ?? '',
+    grossWeight: inv.grossWeight ?? '',
+    volume: inv.volume ?? '',
+    packages: inv.packages ?? '',
+    shipperName: inv.shipperName ?? '',
+    consigneeName: inv.consigneeName ?? '',
+    customerRef: inv.customerRef ?? '',
+    bankName: inv.bankName ?? '',
+    bankAddress: inv.bankAddress ?? '',
+    accountName: inv.accountName ?? '',
+    accountNumber: inv.accountNumber ?? '',
+    iban: inv.iban ?? '',
+    swiftCode: inv.swiftCode ?? '',
+    currency: inv.currency,
+    taxRate: String(inv.taxRate ?? 0),
+    shippingCost: String(inv.shippingCost ?? 0),
+    paymentTerms: inv.paymentTerms ?? '',
+    notes: inv.notes ?? '',
+    invoiceDate: isoDate(inv.invoiceDate),
+    dueDate: isoDate(inv.dueDate),
+    status: inv.status,
+    items: (inv.items && inv.items.length > 0)
+      ? inv.items.map((it) => ({
+          description: it.description ?? '',
+          quantity: String(it.quantity ?? 1),
+          unitPrice: String(it.unitPrice ?? 0),
+          lineCurrency: it.lineCurrency ?? inv.currency,
+          exchangeRate: String(it.exchangeRate ?? 1),
+          vatPercent: String(it.vatPercent ?? 0),
+          remarks: it.remarks ?? '',
+        }))
+      : [{ description: '', quantity: '1', unitPrice: '', lineCurrency: inv.currency, exchangeRate: '1', vatPercent: '0', remarks: '' }],
+  };
+}
+
 function calcSubtotal(items: LineItem[]) {
   return items.reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0), 0);
 }
@@ -126,8 +183,15 @@ function calcLineVatTotal(items: LineItem[]): number {
   return items.reduce((s, i) => s + lineVat(i), 0);
 }
 
-export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState<InvoiceForm>(emptyForm());
+interface CreateInvoiceModalProps {
+  onClose: () => void;
+  onSuccess: () => void;
+  editing?: Invoice | null;
+}
+
+export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoiceModalProps) {
+  const isEdit = !!editing;
+  const [form, setForm] = useState<InvoiceForm>(() => editing ? formFromInvoice(editing) : emptyForm());
   const [error, setError] = useState('');
   const [showShipFrom, setShowShipFrom] = useState(false);
 
@@ -211,7 +275,7 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
           }));
         } catch { /* ignore storage errors */ }
       }
-      return api.post('/invoices', {
+      const payload = {
         orderId: form.orderId || undefined,
         billToName: form.billToName,
         billToAddress: form.billToAddress,
@@ -260,11 +324,14 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
           vatPercent: parseFloat(i.vatPercent) || 0,
           remarks: i.remarks || undefined,
         })),
-      });
+      };
+      return isEdit
+        ? api.patch(`/invoices/${editing!.id}`, payload)
+        : api.post('/invoices', payload);
     },
     onSuccess: () => { onSuccess(); onClose(); },
     onError: (err: { response?: { data?: { message?: string } } }) => {
-      setError(err.response?.data?.message || 'Failed to create invoice.');
+      setError(err.response?.data?.message || (isEdit ? 'Failed to update invoice.' : 'Failed to create invoice.'));
     },
   });
 
@@ -329,7 +396,9 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Create Invoice</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              {isEdit ? `Edit Invoice — ${editing!.invoiceNumber}` : 'Create Invoice'}
+            </h2>
             <p className="text-xs text-slate-400 mt-0.5">Invoice number auto-generated on save</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
@@ -763,7 +832,9 @@ export function CreateInvoiceModal({ onClose, onSuccess }: { onClose: () => void
               disabled={mutation.isPending || !form.billToName || !form.billToAddress || form.items.some((i) => !i.description)}
               className="px-5 py-2 text-sm font-semibold bg-brand-navy text-white rounded-xl hover:bg-brand-navy/90 disabled:opacity-50 flex items-center gap-2">
               {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              {mutation.isPending ? 'Creating…' : 'Create Invoice'}
+              {mutation.isPending
+                ? (isEdit ? 'Saving…' : 'Creating…')
+                : (isEdit ? 'Save Changes' : 'Create Invoice')}
             </button>
           </div>
         </div>
