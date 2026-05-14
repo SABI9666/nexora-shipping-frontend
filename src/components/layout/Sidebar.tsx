@@ -10,6 +10,7 @@ import {
   FileSignature,
   MapPin,
   Receipt,
+  BookOpen,
   LogOut,
   Settings,
   Users,
@@ -33,6 +34,7 @@ const navItems = [
   { href: '/documents', label: 'Documents', icon: FileText },
   { href: '/quotations', label: 'Quotations', icon: FileSignature },
   { href: '/invoices', label: 'Invoices', icon: Receipt },
+  { href: '/vouchers', label: 'Vouchers', icon: BookOpen },
   { href: '/track', label: 'Track Package', icon: MapPin },
 ];
 
