@@ -5,7 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { COUNTRIES, inferCountryCode, normalizeCountryCode } from '@/lib/countries';
-import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount, Invoice } from '@/types';
+import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount, Invoice, Account } from '@/types';
 import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react';
@@ -24,8 +24,6 @@ const PAYMENT_TERMS_OPTIONS = [
   'Cash', 'Net 7', 'Net 15', 'Net 30', 'Net 60', 'Due on Receipt', 'Custom',
 ];
 
-// Country list now lives in src/lib/countries.ts and is shared across forms.
-
 interface LineItem {
   description: string;
   quantity: string;
@@ -38,6 +36,7 @@ interface LineItem {
 
 interface InvoiceForm {
   orderId: string;
+  accountId: string;
   billToName: string; billToAddress: string; billToCity: string; billToCountry: string;
   billToEmail: string; billToPhone: string;
   shipFromName: string; shipFromAddress: string; shipFromCity: string; shipFromCountry: string;
@@ -91,6 +90,7 @@ const emptyForm = (): InvoiceForm => {
   const bd = loadBankDefaults();
   return {
     orderId: '',
+    accountId: '',
     billToName: '', billToAddress: '', billToCity: '', billToCountry: 'ARE',
     billToEmail: '', billToPhone: '',
     shipFromName: 'Nexora Shipping LLC', shipFromAddress: 'Khansaheb warehouse B1-14, Al Qusais Industrial Area 1',
@@ -112,11 +112,11 @@ const emptyForm = (): InvoiceForm => {
   };
 };
 
-// Map an existing Invoice → the form-state shape used by this modal.
 function formFromInvoice(inv: Invoice): InvoiceForm {
   const isoDate = (s?: string) => (s ? new Date(s).toISOString().split('T')[0] : '');
   return {
     orderId: inv.orderId ?? '',
+    accountId: inv.accountId ?? '',
     billToName: inv.billToName ?? '',
     billToAddress: inv.billToAddress ?? '',
     billToCity: inv.billToCity ?? '',
@@ -201,6 +201,16 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
   });
   const orders: Order[] = ordersData ?? [];
 
+  const { data: accountsData } = useQuery({
+    queryKey: ['accounts-for-invoice'],
+    queryFn: () =>
+      api
+        .get('/accounts?limit=1000')
+        .then((r) => r.data.data as Account[])
+        .catch(() => [] as Account[]),
+  });
+  const accounts: Account[] = accountsData ?? [];
+
   const { data: chargeItems } = useQuery({
     queryKey: ['charge-items-for-invoice'],
     queryFn: () =>
@@ -221,7 +231,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
 
   const [selectedBankId, setSelectedBankId] = useState('');
 
-  // Auto-select default bank when the list arrives and the form's bank fields are still empty
   useEffect(() => {
     if (selectedBankId) return;
     if (!bankAccounts || bankAccounts.length === 0) return;
@@ -253,15 +262,32 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
       accountNumber: b.accountNumber,
       iban: b.iban ?? '',
       swiftCode: b.swiftCode ?? '',
-      // Pull TRN from the chosen bank when the form's TRN is still empty
-      // so the user can override after picking.
       companyTrn: f.companyTrn || (b.companyTrn ?? ''),
+    }));
+  };
+
+  // When the user picks a Customer Account, auto-fill the Bill To block.
+  const applyAccount = (id: string) => {
+    setForm((f) => ({ ...f, accountId: id }));
+    if (!id) return;
+    const a = accounts.find((x) => x.id === id);
+    if (!a) return;
+    const addr = a.deliveryAddress || a.address || '';
+    const inferred = inferCountryCode(`${addr} ${a.place ?? ''}`) || '';
+    setForm((f) => ({
+      ...f,
+      accountId: id,
+      billToName: f.billToName || a.name,
+      billToAddress: f.billToAddress || addr,
+      billToCity: f.billToCity || a.place || '',
+      billToCountry: inferred || f.billToCountry,
+      billToEmail: f.billToEmail || a.email || a.financeEmail || '',
+      billToPhone: f.billToPhone || a.mobile1 || a.phone1 || '',
     }));
   };
 
   const mutation = useMutation({
     mutationFn: () => {
-      // Persist bank/TRN defaults locally so the next invoice pre-fills
       if (typeof window !== 'undefined') {
         try {
           window.localStorage.setItem(BANK_DEFAULTS_KEY, JSON.stringify({
@@ -273,10 +299,11 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
             iban: form.iban,
             swiftCode: form.swiftCode,
           }));
-        } catch { /* ignore storage errors */ }
+        } catch { /* ignore */ }
       }
       const payload = {
         orderId: form.orderId || undefined,
+        accountId: form.accountId || undefined,
         billToName: form.billToName,
         billToAddress: form.billToAddress,
         billToCity: form.billToCity,
@@ -363,7 +390,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
       billToCity: order.deliveryCity,
       billToCountry: inferred || f.billToCountry,
       billToAddress: order.deliveryAddress,
-      // Auto-fill shipment details from the order — user can still edit
       originPort: f.originPort || order.pickupCity || '',
       destPort: f.destPort || order.deliveryCity || '',
       volume: f.volume || (order.cbm != null ? `${order.cbm} CBM` : ''),
@@ -390,6 +416,8 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
   const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy';
   const labelCls = 'block text-xs font-semibold text-slate-600 mb-1';
 
+  const selectedAccount = accounts.find((a) => a.id === form.accountId) || null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -412,6 +440,36 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
               <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
             </div>
           )}
+
+          {/* Customer Account picker — links the invoice to Account Master so it shows in Account Statement. */}
+          <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label className="text-xs font-semibold text-brand-navy uppercase tracking-wide">
+                Customer Account <span className="text-slate-400 font-normal normal-case">· links invoice to ledger</span>
+              </label>
+              {selectedAccount && (
+                <button type="button" onClick={() => set('accountId', '')}
+                  className="text-[11px] text-slate-400 hover:text-rose-600">Clear</button>
+              )}
+            </div>
+            <select value={form.accountId} onChange={(e) => applyAccount(e.target.value)} className={inputCls}>
+              <option value="">— No account linked (legacy mode) —</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} · {a.name}{a.accountGroup ? ` · ${a.accountGroup.name}` : ''}
+                </option>
+              ))}
+            </select>
+            {selectedAccount && (
+              <p className="text-[11px] text-slate-500 mt-1">
+                Bill-to fields auto-filled from <span className="font-semibold text-brand-navy">{selectedAccount.code} · {selectedAccount.name}</span>.
+                You can still override any field below.
+              </p>
+            )}
+            {accounts.length === 0 && (
+              <p className="text-[11px] text-slate-400 mt-1">No accounts yet — add one in Account Master.</p>
+            )}
+          </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-3 sm:col-span-1">
@@ -695,7 +753,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
                         placeholder="Optional note — e.g. container no., reference, payment ref"
                         className={`${inputCls} text-xs py-1.5`} />
                     </div>
-                    {/* Live line-item preview: Net · VAT · Total */}
                     {(lineNet(item) > 0 || lineVat(item) > 0) && (
                       <div className="col-span-12 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500 pl-1 -mt-1">
                         <span>Net <span className="text-slate-700 font-medium">{formatCurrency(lineNet(item), item.lineCurrency || form.currency)}</span></span>
@@ -749,7 +806,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
             </div>
           </div>
 
-          {/* Bank Details */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3 gap-3">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
