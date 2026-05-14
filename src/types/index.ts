@@ -191,6 +191,70 @@ export interface Quotation {
   user?: Partial<User>;
 }
 
+export type VoucherType =
+  | 'CASH'
+  | 'PURCHASE'
+  | 'PAYMENT'
+  | 'BANK'
+  | 'JOURNAL'
+  | 'RECEIPT'
+  | 'SUPPLIER_PAYMENT'
+  | 'CREDIT_NOTE'
+  | 'DEBIT_NOTE';
+
+export type VoucherDirection = 'DEBIT' | 'CREDIT';
+export type VoucherReferenceType = 'NONE' | 'INVOICE' | 'ORDER';
+
+export interface Voucher {
+  id: string;
+  voucherNumber: string;
+  type: VoucherType;
+  direction: VoucherDirection;
+  voucherDate: string;
+  amount: number;
+  currency: string;
+  referenceType: VoucherReferenceType;
+  invoiceId?: string | null;
+  orderId?: string | null;
+  partyName?: string | null;
+  narration?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileMimeType?: string | null;
+  fileSize?: number | null;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  invoice?: {
+    id: string;
+    invoiceNumber: string;
+    total: number;
+    currency: string;
+    billToName: string;
+  } | null;
+  order?: {
+    id: string;
+    orderNumber: string;
+    price: number | null;
+  } | null;
+  user?: Partial<User>;
+}
+
+export interface VoucherReferenceValue {
+  reference: {
+    type: 'INVOICE' | 'ORDER';
+    id: string;
+    number: string;
+    party: string | null;
+    status: string;
+  };
+  baseValue: number;
+  creditTotal: number;
+  debitTotal: number;
+  outstanding: number;
+  currency: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message?: string;
