@@ -222,7 +222,7 @@ export interface Quotation {
   user?: Partial<User>;
 }
 
-// ── Masters ───────────────────────────────────────────────────────────────
+// ── Masters ──────────────────────────────────────────────────────────────────
 
 export type AccountGroupType = 'ASSET' | 'LIABILITIES' | 'PL' | 'TRADING';
 
@@ -343,7 +343,7 @@ export interface ItemMaster {
   updatedAt: string;
 }
 
-// ── Vouchers ────────────────────────────────────────────────────────────
+// ── Vouchers ─────────────────────────────────────────────────────────────────
 
 export type VoucherType =
   | 'CASH'
