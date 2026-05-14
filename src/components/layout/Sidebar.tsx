@@ -14,6 +14,12 @@ import {
   LogOut,
   Settings,
   Users,
+  UserSquare,
+  UserCog,
+  Layers,
+  BookUser,
+  Tags,
+  Landmark,
   Shield,
   ChevronRight,
 } from 'lucide-react';
@@ -32,6 +38,15 @@ const navItems = [
   { href: '/track', label: 'Track Package', icon: MapPin },
 ];
 
+const mastersItems = [
+  { href: '/admin/account-groups', label: 'Account Group Master', icon: Layers },
+  { href: '/admin/account-master', label: 'Account Master', icon: UserSquare },
+  { href: '/admin/salesperson-master', label: 'Salesperson (REP) Master', icon: UserCog },
+  { href: '/admin/item-master', label: 'Customer Master', icon: BookUser },
+  { href: '/admin/charge-items', label: 'Item Master', icon: Tags },
+  { href: '/admin/bank-accounts', label: 'Bank Accounts', icon: Landmark },
+];
+
 const adminItems = [
   { href: '/admin/users', label: 'User Management', icon: Users },
   { href: '/admin/settings', label: 'System Settings', icon: Settings },
@@ -43,7 +58,6 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 min-h-screen bg-brand-navy flex flex-col fixed left-0 top-0 z-40">
-      {/* Logo */}
       <div className="p-4 border-b border-white/10">
         <Link href="/dashboard" className="flex items-center justify-center">
           <div className="bg-white rounded-xl px-3 py-2">
@@ -52,7 +66,6 @@ export function Sidebar() {
         </Link>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider px-3 mb-2 mt-1">Main Menu</p>
         {navItems.map(({ href, label, icon: Icon }) => (
@@ -68,6 +81,21 @@ export function Sidebar() {
 
         {isAdmin && (
           <>
+            <div className="pt-4 pb-1 px-3">
+              <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Masters</p>
+              <div className="mt-1 h-px bg-white/10" />
+            </div>
+            {mastersItems.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={cn('sidebar-link', pathname.startsWith(href) ? 'active' : '')}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {label}
+              </Link>
+            ))}
+
             <div className="pt-4 pb-1 px-3">
               <div className="flex items-center gap-1.5">
                 <Shield className="w-3 h-3 text-brand-red" />
@@ -94,7 +122,6 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* User footer */}
       <div className="p-3 border-t border-white/10">
         {user && (
           <div className="flex items-center gap-3 px-2 py-2 mb-1 rounded-lg">
@@ -117,7 +144,7 @@ export function Sidebar() {
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/10 transition-all"
         >
           <LogOut className="w-4 h-4" />
-          Sign Out
+          Logout
         </button>
       </div>
     </aside>
