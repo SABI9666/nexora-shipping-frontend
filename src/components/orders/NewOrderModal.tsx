@@ -12,18 +12,75 @@ import { Account, ItemMaster, Salesperson } from '@/types';
 const schema = z.object({
   pickupAddress: z.string().min(5, 'Required'),
   pickupCity: z.string().min(2, 'Required'),
-  pickupCountry: z.string().length(2, 'Use 2-letter country code (e.g. US)'),
+  pickupCountry: z.string().length(3, 'Use 3-letter country code (e.g. USA)'),
   deliveryAddress: z.string().min(5, 'Required'),
   deliveryCity: z.string().min(2, 'Required'),
-  deliveryCountry: z.string().length(2, 'Use 2-letter country code'),
+  deliveryCountry: z.string().length(3, 'Use 3-letter country code'),
   packageDescription: z.string().min(5, 'Required'),
-  weight: z.number({ coerce: true }).positive().max(1000),
-  length: z.number({ coerce: true }).positive().optional(),
-  width: z.number({ coerce: true }).positive().optional(),
-  height: z.number({ coerce: true }).positive().optional(),
-  declaredValue: z.number({ coerce: true }).positive().optional(),
+  weight: z.number({ coerce: true }).positive(),
+  cbm: z.number({ coerce: true }).positive().optional(),
   specialInstructions: z.string().optional(),
 });
+
+const COUNTRY_KEYWORDS: { code: string; patterns: RegExp[] }[] = [
+  { code: 'ARE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
+  { code: 'SAU', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
+  { code: 'QAT', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
+  { code: 'KWT', patterns: [/\bKuwait\b/i] },
+  { code: 'OMN', patterns: [/\bOman\b/i, /\bMuscat\b/i] },
+  { code: 'BHR', patterns: [/\bBahrain\b/i, /\bManama\b/i] },
+  { code: 'IND', patterns: [/\bIndia\b/i, /\bMumbai\b/i, /\bDelhi\b/i, /\bBangalore\b/i, /\bBengaluru\b/i, /\bKochi\b/i, /\bChennai\b/i, /\bKolkata\b/i, /\bHyderabad\b/i, /\bKerala\b/i] },
+  { code: 'PAK', patterns: [/\bPakistan\b/i, /\bKarachi\b/i, /\bLahore\b/i, /\bIslamabad\b/i] },
+  { code: 'BGD', patterns: [/\bBangladesh\b/i, /\bDhaka\b/i] },
+  { code: 'LKA', patterns: [/\bSri\s+Lanka\b/i, /\bColombo\b/i] },
+  { code: 'NPL', patterns: [/\bNepal\b/i, /\bKathmandu\b/i] },
+  { code: 'PHL', patterns: [/\bPhilippines\b/i, /\bManila\b/i] },
+  { code: 'CHN', patterns: [/\bChina\b/i, /\bShanghai\b/i, /\bBeijing\b/i, /\bShenzhen\b/i, /\bGuangzhou\b/i] },
+  { code: 'HKG', patterns: [/\bHong\s+Kong\b/i] },
+  { code: 'SGP', patterns: [/\bSingapore\b/i] },
+  { code: 'MYS', patterns: [/\bMalaysia\b/i, /\bKuala\s+Lumpur\b/i] },
+  { code: 'THA', patterns: [/\bThailand\b/i, /\bBangkok\b/i] },
+  { code: 'JPN', patterns: [/\bJapan\b/i, /\bTokyo\b/i, /\bOsaka\b/i] },
+  { code: 'KOR', patterns: [/\bSouth\s+Korea\b/i, /\bSeoul\b/i] },
+  { code: 'GBR', patterns: [/\bUnited\s+Kingdom\b/i, /\bU\.?K\.?\b/, /\bEngland\b/i, /\bScotland\b/i, /\bWales\b/i, /\bLondon\b/i, /\bManchester\b/i, /\bBirmingham\b/i] },
+  { code: 'IRL', patterns: [/\bIreland\b/i, /\bDublin\b/i] },
+  { code: 'FRA', patterns: [/\bFrance\b/i, /\bParis\b/i, /\bMarseille\b/i] },
+  { code: 'DEU', patterns: [/\bGermany\b/i, /\bBerlin\b/i, /\bMunich\b/i, /\bHamburg\b/i] },
+  { code: 'ESP', patterns: [/\bSpain\b/i, /\bMadrid\b/i, /\bBarcelona\b/i] },
+  { code: 'ITA', patterns: [/\bItaly\b/i, /\bRome\b/i, /\bMilan\b/i] },
+  { code: 'NLD', patterns: [/\bNetherlands\b/i, /\bAmsterdam\b/i, /\bRotterdam\b/i] },
+  { code: 'BEL', patterns: [/\bBelgium\b/i, /\bBrussels\b/i] },
+  { code: 'CHE', patterns: [/\bSwitzerland\b/i, /\bZurich\b/i, /\bGeneva\b/i] },
+  { code: 'AUT', patterns: [/\bAustria\b/i, /\bVienna\b/i] },
+  { code: 'SWE', patterns: [/\bSweden\b/i, /\bStockholm\b/i] },
+  { code: 'NOR', patterns: [/\bNorway\b/i, /\bOslo\b/i] },
+  { code: 'DNK', patterns: [/\bDenmark\b/i, /\bCopenhagen\b/i] },
+  { code: 'FIN', patterns: [/\bFinland\b/i, /\bHelsinki\b/i] },
+  { code: 'POL', patterns: [/\bPoland\b/i, /\bWarsaw\b/i] },
+  { code: 'TUR', patterns: [/\bTurkey\b/i, /\bIstanbul\b/i, /\bAnkara\b/i] },
+  { code: 'RUS', patterns: [/\bRussia\b/i, /\bMoscow\b/i] },
+  { code: 'EGY', patterns: [/\bEgypt\b/i, /\bCairo\b/i] },
+  { code: 'ZAF', patterns: [/\bSouth\s+Africa\b/i, /\bJohannesburg\b/i, /\bCape\s+Town\b/i] },
+  { code: 'KEN', patterns: [/\bKenya\b/i, /\bNairobi\b/i] },
+  { code: 'NGA', patterns: [/\bNigeria\b/i, /\bLagos\b/i, /\bAbuja\b/i] },
+  { code: 'AUS', patterns: [/\bAustralia\b/i, /\bSydney\b/i, /\bMelbourne\b/i] },
+  { code: 'NZL', patterns: [/\bNew\s+Zealand\b/i, /\bAuckland\b/i, /\bWellington\b/i] },
+  { code: 'CAN', patterns: [/\bCanada\b/i, /\bToronto\b/i, /\bVancouver\b/i, /\bMontreal\b/i] },
+  { code: 'MEX', patterns: [/\bMexico\b/i] },
+  { code: 'BRA', patterns: [/\bBrazil\b/i, /\bSao\s+Paulo\b/i, /\bRio\s+de\s+Janeiro\b/i] },
+  { code: 'ARG', patterns: [/\bArgentina\b/i, /\bBuenos\s+Aires\b/i] },
+  { code: 'USA', patterns: [/\bU\.?S\.?A?\.?\b/, /\bUnited\s+States\b/i, /\bNew\s+York\b/i, /\bLos\s+Angeles\b/i, /\bChicago\b/i, /\bHouston\b/i, /\bMiami\b/i, /\bDallas\b/i, /\bSan\s+Francisco\b/i] },
+];
+
+function inferCountryCode(text: string): string | null {
+  if (!text) return null;
+  for (const { code, patterns } of COUNTRY_KEYWORDS) {
+    if (patterns.some((p) => p.test(text))) return code;
+  }
+  const trailingIso = /[\s,]([A-Z]{3})\s*$/.exec(text.trim());
+  if (trailingIso) return trailingIso[1];
+  return null;
+}
 
 type FormData = z.infer<typeof schema>;
 
@@ -31,9 +88,6 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
 }
-
-// Cubic meters from cm dimensions
-const formatCbm = (m3: number) => `${m3.toFixed(3)} m³`;
 
 export function NewOrderModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState('');
@@ -45,7 +99,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { pickupCountry: 'US', deliveryCountry: 'US' },
+    defaultValues: { pickupCountry: 'USA', deliveryCountry: 'USA' },
   });
 
   // Fetch masters for dropdowns — gracefully handles 404 when backend not yet deployed
@@ -76,6 +130,8 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     const addr = a.deliveryAddress || a.address || '';
     if (addr) setValue('deliveryAddress', addr, { shouldValidate: true });
     if (a.place) setValue('deliveryCity', a.place, { shouldValidate: true });
+    const inferred = inferCountryCode(`${addr} ${a.place ?? ''}`);
+    if (inferred) setValue('deliveryCountry', inferred, { shouldValidate: true });
     const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
     setValue('specialInstructions', note);
     // Auto-pick the account's primary salesperson if one is set
@@ -93,10 +149,15 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     setValue('specialInstructions', note);
   };
 
-  const length = watch('length') || 0;
-  const width = watch('width') || 0;
-  const height = watch('height') || 0;
-  const totalCbm = (length * width * height) / 1_000_000;
+  const autoFillCountry = (
+    addressField: 'pickupAddress' | 'deliveryAddress',
+    cityField: 'pickupCity' | 'deliveryCity',
+    countryField: 'pickupCountry' | 'deliveryCountry',
+  ) => {
+    const text = `${watch(addressField) || ''} ${watch(cityField) || ''}`;
+    const code = inferCountryCode(text);
+    if (code) setValue(countryField, code, { shouldValidate: true });
+  };
 
   const onSubmit = async (data: FormData) => {
     setError('');
@@ -144,9 +205,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
           <div className="p-6">
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
               <p className="text-green-800 font-medium text-sm">Order created successfully!</p>
-              <p className="text-green-700 text-sm mt-1">
-                Total CBM: <strong>{formatCbm(totalCbm)}</strong>
-              </p>
               <p className="text-green-600 text-xs mt-2">
                 Confirming will create a shipment and tracking number.
               </p>
@@ -193,13 +251,13 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   )}
                 </div>
                 <div>
-                  <label className="form-label">Item Master</label>
+                  <label className="form-label">Customer Master</label>
                   <select
                     value={selectedItemId}
                     onChange={(e) => handleItemSelect(e.target.value)}
                     className="form-input"
                   >
-                    <option value="">— Select item —</option>
+                    <option value="">— Select customer —</option>
                     {(items ?? []).map((it) => (
                       <option key={it.id} value={it.id}>
                         {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
@@ -207,7 +265,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                     ))}
                   </select>
                   {(items ?? []).length === 0 && (
-                    <p className="text-xs text-slate-400 mt-1">No items yet — add one in Item Master.</p>
+                    <p className="text-xs text-slate-400 mt-1">No customers yet — add one in Customer Master.</p>
                   )}
                 </div>
               </div>
@@ -270,18 +328,30 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="form-label">Street Address</label>
-                  <input {...register('pickupAddress')} className="form-input" placeholder="123 Main St" />
+                  <input
+                    {...register('pickupAddress', {
+                      onBlur: () => autoFillCountry('pickupAddress', 'pickupCity', 'pickupCountry'),
+                    })}
+                    className="form-input"
+                    placeholder="123 Main St, Dubai, UAE"
+                  />
                   {errors.pickupAddress && <p className="text-red-500 text-xs mt-1">{errors.pickupAddress.message}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">City</label>
-                    <input {...register('pickupCity')} className="form-input" placeholder="New York" />
+                    <input
+                      {...register('pickupCity', {
+                        onBlur: () => autoFillCountry('pickupAddress', 'pickupCity', 'pickupCountry'),
+                      })}
+                      className="form-input"
+                      placeholder="Dubai"
+                    />
                     {errors.pickupCity && <p className="text-red-500 text-xs mt-1">{errors.pickupCity.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">Country Code</label>
-                    <input {...register('pickupCountry')} className="form-input" placeholder="US" maxLength={2} />
+                    <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
+                    <input {...register('pickupCountry')} className="form-input" placeholder="USA" maxLength={3} />
                     {errors.pickupCountry && <p className="text-red-500 text-xs mt-1">{errors.pickupCountry.message}</p>}
                   </div>
                 </div>
@@ -294,18 +364,30 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="form-label">Street Address</label>
-                  <input {...register('deliveryAddress')} className="form-input" placeholder="456 Oak Ave" />
+                  <input
+                    {...register('deliveryAddress', {
+                      onBlur: () => autoFillCountry('deliveryAddress', 'deliveryCity', 'deliveryCountry'),
+                    })}
+                    className="form-input"
+                    placeholder="456 Oak Ave, Mumbai, India"
+                  />
                   {errors.deliveryAddress && <p className="text-red-500 text-xs mt-1">{errors.deliveryAddress.message}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">City</label>
-                    <input {...register('deliveryCity')} className="form-input" placeholder="Los Angeles" />
+                    <input
+                      {...register('deliveryCity', {
+                        onBlur: () => autoFillCountry('deliveryAddress', 'deliveryCity', 'deliveryCountry'),
+                      })}
+                      className="form-input"
+                      placeholder="Mumbai"
+                    />
                     {errors.deliveryCity && <p className="text-red-500 text-xs mt-1">{errors.deliveryCity.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">Country Code</label>
-                    <input {...register('deliveryCountry')} className="form-input" placeholder="US" maxLength={2} />
+                    <label className="form-label">Country Code <span className="text-slate-400 font-normal">· auto</span></label>
+                    <input {...register('deliveryCountry')} className="form-input" placeholder="USA" maxLength={3} />
                     {errors.deliveryCountry && <p className="text-red-500 text-xs mt-1">{errors.deliveryCountry.message}</p>}
                   </div>
                 </div>
@@ -321,35 +403,16 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
                   <input {...register('packageDescription')} className="form-input" placeholder="e.g. Electronics - Laptop" />
                   {errors.packageDescription && <p className="text-red-500 text-xs mt-1">{errors.packageDescription.message}</p>}
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">Weight (kg)</label>
                     <input {...register('weight')} type="number" step="0.1" className="form-input" placeholder="2.5" />
                     {errors.weight && <p className="text-red-500 text-xs mt-1">{errors.weight.message}</p>}
                   </div>
                   <div>
-                    <label className="form-label">L (cm)</label>
-                    <input {...register('length')} type="number" step="1" className="form-input" placeholder="40" />
-                  </div>
-                  <div>
-                    <label className="form-label">W (cm)</label>
-                    <input {...register('width')} type="number" step="1" className="form-input" placeholder="30" />
-                  </div>
-                  <div>
-                    <label className="form-label">H (cm)</label>
-                    <input {...register('height')} type="number" step="1" className="form-input" placeholder="10" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="form-label">Declared Value ($)</label>
-                    <input {...register('declaredValue')} type="number" step="0.01" className="form-input" placeholder="Optional" />
-                  </div>
-                  <div className="flex items-end">
-                    <div className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <p className="text-xs text-slate-500 mb-0.5">Total CBM</p>
-                      <p className="text-lg font-bold text-brand-navy">{formatCbm(totalCbm)}</p>
-                    </div>
+                    <label className="form-label">CBM (m³)</label>
+                    <input {...register('cbm')} type="number" step="0.001" className="form-input" placeholder="0.012" />
+                    {errors.cbm && <p className="text-red-500 text-xs mt-1">{errors.cbm.message}</p>}
                   </div>
                 </div>
                 <div>
