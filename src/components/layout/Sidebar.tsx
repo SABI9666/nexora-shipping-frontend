@@ -11,6 +11,7 @@ import {
   MapPin,
   Receipt,
   BookOpen,
+  BarChart3,
   LogOut,
   Settings,
   Users,
@@ -35,6 +36,7 @@ const navItems = [
   { href: '/quotations', label: 'Quotations', icon: FileSignature },
   { href: '/invoices', label: 'Invoices', icon: Receipt },
   { href: '/vouchers', label: 'Vouchers', icon: BookOpen },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/track', label: 'Track Package', icon: MapPin },
 ];
 
