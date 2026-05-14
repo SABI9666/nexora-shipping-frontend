@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import { Order, QuotationStatus, InvoiceCurrency } from '@/types';
+import { Order, QuotationStatus, InvoiceCurrency, ChargeItem } from '@/types';
 import { Plus, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 
 const CURRENCIES: InvoiceCurrency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR'];
@@ -72,6 +72,15 @@ export function CreateQuotationModal({ onClose, onSuccess }: { onClose: () => vo
     queryFn: () => api.get('/orders?limit=100').then((r) => r.data.data as Order[]),
   });
   const orders: Order[] = ordersData ?? [];
+
+  const { data: chargeItems } = useQuery({
+    queryKey: ['charge-items-for-quotation'],
+    queryFn: () =>
+      api
+        .get('/charge-items?limit=500')
+        .then((r) => r.data.data as ChargeItem[])
+        .catch(() => [] as ChargeItem[]),
+  });
 
   const mutation = useMutation({
     mutationFn: () => api.post('/quotations', {
@@ -238,14 +247,34 @@ export function CreateQuotationModal({ onClose, onSuccess }: { onClose: () => vo
           </div>
 
           <div>
+            <datalist id="quotation-charge-items">
+              {(chargeItems ?? []).map((c) => (
+                <option key={c.id} value={c.name}>{c.code} · {c.name}</option>
+              ))}
+            </datalist>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Line Items *</p>
             <div className="space-y-2">
               {form.items.map((item, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
                   <div className="col-span-6">
                     {idx === 0 && <label className={labelCls}>Description</label>}
-                    <input value={item.description} onChange={(e) => setItem(idx, 'description', e.target.value)}
-                      placeholder="Service / item description" className={inputCls} />
+                    <input
+                      value={item.description}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setItem(idx, 'description', v);
+                        const match = (chargeItems ?? []).find((c) => c.name === v || `${c.code} · ${c.name}` === v);
+                        if (match) {
+                          setItem(idx, 'description', match.name);
+                          if (!item.unitPrice && match.defaultRate != null) {
+                            setItem(idx, 'unitPrice', String(match.defaultRate));
+                          }
+                        }
+                      }}
+                      list="quotation-charge-items"
+                      placeholder="Service / item description (start typing to autocomplete)"
+                      className={inputCls}
+                    />
                   </div>
                   <div className="col-span-2">
                     {idx === 0 && <label className={labelCls}>Qty</label>}
@@ -291,16 +320,16 @@ export function CreateQuotationModal({ onClose, onSuccess }: { onClose: () => vo
           <div className="bg-slate-50 rounded-xl p-4">
             <div className="flex justify-end">
               <div className="w-56 space-y-1 text-sm">
-                <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal, form.currency)}</span></div>
                 {(parseFloat(form.taxRate) || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600"><span>Tax ({form.taxRate}%)</span><span>{formatCurrency(tax)}</span></div>
+                  <div className="flex justify-between text-slate-600"><span>Tax ({form.taxRate}%)</span><span>{formatCurrency(tax, form.currency)}</span></div>
                 )}
                 {(parseFloat(form.shippingCost) || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(shipping)}</span></div>
+                  <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(shipping, form.currency)}</span></div>
                 )}
                 <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2">
                   <span>Total ({form.currency})</span>
-                  <span className="text-brand-navy">{formatCurrency(total)}</span>
+                  <span className="text-brand-navy">{formatCurrency(total, form.currency)}</span>
                 </div>
               </div>
             </div>

@@ -9,7 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Quotation, QuotationStatus } from '@/types';
 import {
-  Plus, FileSignature, Trash2, Eye, X, Search, Receipt, Download, Loader2,
+  Plus, FileSignature, Trash2, Eye, X, Search, Receipt, Download, Loader2, FileType,
 } from 'lucide-react';
 import { CreateQuotationModal } from './CreateQuotationModal';
 
@@ -24,10 +24,11 @@ const STATUS_CONFIG: Record<QuotationStatus, { label: string; bg: string; color:
 
 function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; onClose: () => void }) {
   const cfg = STATUS_CONFIG[quotation.status];
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingWord, setDownloadingWord] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  const handleDownload = async () => {
-    setDownloading(true);
+  const handleDownloadWord = async () => {
+    setDownloadingWord(true);
     try {
       await downloadDocx(
         `/quotations/${quotation.id}/download/word`,
@@ -36,7 +37,21 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
     } catch {
       alert('Failed to download Word document.');
     } finally {
-      setDownloading(false);
+      setDownloadingWord(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadDocx(
+        `/quotations/${quotation.id}/download/pdf`,
+        `${quotation.quotationNumber}.pdf`,
+      );
+    } catch {
+      alert('Failed to download PDF.');
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -53,10 +68,15 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
             <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(quotation.quotationDate)}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleDownload} disabled={downloading}
+            <button onClick={handleDownloadPdf} disabled={downloadingPdf}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy rounded-xl hover:bg-brand-navy/90 disabled:opacity-50">
+              {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileType className="w-4 h-4" />}
+              PDF
+            </button>
+            <button onClick={handleDownloadWord} disabled={downloadingWord}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-navy border border-brand-navy/30 rounded-xl hover:bg-brand-navy/5 disabled:opacity-50">
-              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Download Word
+              {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Word
             </button>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
               <X className="w-4 h-4" />
@@ -121,8 +141,8 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
                     <tr key={item.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-800">{item.description}</td>
                       <td className="px-4 py-3 text-right text-slate-600">{item.quantity}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.unitPrice)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(item.amount)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.unitPrice, quotation.currency)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(item.amount, quotation.currency)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -132,16 +152,16 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
 
           <div className="flex justify-end">
             <div className="w-64 space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(quotation.subtotal)}</span></div>
+              <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(quotation.subtotal, quotation.currency)}</span></div>
               {quotation.taxRate > 0 && (
-                <div className="flex justify-between text-slate-600"><span>Tax ({quotation.taxRate}%)</span><span>{formatCurrency(quotation.taxAmount)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Tax ({quotation.taxRate}%)</span><span>{formatCurrency(quotation.taxAmount, quotation.currency)}</span></div>
               )}
               {quotation.shippingCost > 0 && (
-                <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(quotation.shippingCost)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Shipping</span><span>{formatCurrency(quotation.shippingCost, quotation.currency)}</span></div>
               )}
               <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
                 <span>Total ({quotation.currency})</span>
-                <span className="text-brand-navy text-base">{formatCurrency(quotation.total)}</span>
+                <span className="text-brand-navy text-base">{formatCurrency(quotation.total, quotation.currency)}</span>
               </div>
             </div>
           </div>
@@ -285,7 +305,7 @@ export default function QuotationsPage() {
                         ) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-slate-900">
-                        {formatCurrency(q.total)}
+                        {formatCurrency(q.total, q.currency)}
                         <span className="text-xs font-normal text-slate-400 ml-1">{q.currency}</span>
                       </td>
                       <td className="px-4 py-3.5">
@@ -331,19 +351,42 @@ export default function QuotationsPage() {
         )}
       </div>
 
-      {quotations.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
-          <span>{quotations.length} quotation{quotations.length !== 1 ? 's' : ''}</span>
-          <span>·</span>
-          <span>Accepted total: <span className="font-semibold text-green-700">
-            {formatCurrency(quotations.filter((q) => q.status === 'ACCEPTED').reduce((s, q) => s + q.total, 0))}
-          </span></span>
-          <span>·</span>
-          <span>Pending (sent): <span className="font-semibold text-slate-800">
-            {formatCurrency(quotations.filter((q) => q.status === 'SENT').reduce((s, q) => s + q.total, 0))}
-          </span></span>
-        </div>
-      )}
+      {quotations.length > 0 && (() => {
+        const sumByCurrency = (predicate: (q: typeof quotations[number]) => boolean) =>
+          Object.entries(
+            quotations.filter(predicate).reduce<Record<string, number>>((acc, q) => {
+              const cur = q.currency || 'USD';
+              acc[cur] = (acc[cur] ?? 0) + q.total;
+              return acc;
+            }, {})
+          ).sort(([a], [b]) => a.localeCompare(b));
+        const accepted = sumByCurrency((q) => q.status === 'ACCEPTED');
+        const sent = sumByCurrency((q) => q.status === 'SENT');
+        const renderTotals = (entries: [string, number][], emptyClass: string) =>
+          entries.length === 0
+            ? <span className={emptyClass}>—</span>
+            : entries.map(([cur, amount], idx) => (
+                <span key={cur}>
+                  {idx > 0 && <span className="text-slate-300 mx-1.5">·</span>}
+                  <span className="font-semibold">{formatCurrency(amount, cur)}</span>
+                </span>
+              ));
+        return (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+            <span>{quotations.length} quotation{quotations.length !== 1 ? 's' : ''}</span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Accepted:
+              <span className="text-green-700">{renderTotals(accepted, 'text-slate-400')}</span>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1.5">
+              Pending (sent):
+              <span className="text-slate-800">{renderTotals(sent, 'text-slate-400')}</span>
+            </span>
+          </div>
+        );
+      })()}
 
       {showCreate && (
         <CreateQuotationModal

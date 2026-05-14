@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import api from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Order } from '@/types';
-import { Plus, Search, Package, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Package, ChevronLeft, ChevronRight, Eye, Pencil } from 'lucide-react';
 import { NewOrderModal } from '@/components/orders/NewOrderModal';
 
 export default function OrdersPage() {
@@ -101,9 +101,22 @@ export default function OrdersPage() {
                     <td><StatusBadge status={order.status} type="order" /></td>
                     <td className="text-sm text-slate-500">{formatDate(order.createdAt)}</td>
                     <td>
-                      <Link href={`/orders/${order.id}`} className="text-brand-navy text-xs hover:underline">
-                        View
-                      </Link>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Link
+                          href={`/orders/${order.id}`}
+                          className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                          title="View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
+                        <Link
+                          href={`/orders/${order.id}?edit=1`}
+                          className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
