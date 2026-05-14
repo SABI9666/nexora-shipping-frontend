@@ -222,7 +222,7 @@ export interface Quotation {
   user?: Partial<User>;
 }
 
-// ── Masters ──────────────────────────────────────────────────────────────────
+// ── Masters ───────────────────────────────────────────────────────────────
 
 export type AccountGroupType = 'ASSET' | 'LIABILITIES' | 'PL' | 'TRADING';
 
@@ -343,7 +343,7 @@ export interface ItemMaster {
   updatedAt: string;
 }
 
-// ── Vouchers ─────────────────────────────────────────────────────────────────
+// ── Vouchers ──────────────────────────────────────────────────────────
 
 export type VoucherType =
   | 'CASH'
@@ -359,6 +359,13 @@ export type VoucherType =
 export type VoucherDirection = 'DEBIT' | 'CREDIT';
 export type VoucherReferenceType = 'NONE' | 'INVOICE' | 'ORDER';
 
+export interface VoucherAccountRef {
+  id: string;
+  code: string;
+  name: string;
+  accountGroup?: { id: string; code: string; name: string; groupType: AccountGroupType };
+}
+
 export interface Voucher {
   id: string;
   voucherNumber: string;
@@ -370,6 +377,8 @@ export interface Voucher {
   referenceType: VoucherReferenceType;
   invoiceId?: string | null;
   orderId?: string | null;
+  accountId?: string | null;
+  contraAccountId?: string | null;
   partyName?: string | null;
   narration?: string | null;
   fileUrl?: string | null;
@@ -391,6 +400,8 @@ export interface Voucher {
     orderNumber: string;
     price: number | null;
   } | null;
+  account?: VoucherAccountRef | null;
+  contraAccount?: VoucherAccountRef | null;
   user?: Partial<User>;
 }
 

@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
+import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, VoucherType, VoucherDirection } from '@/types';
 import {
   Plus, BookOpen, Trash2, Search, Paperclip, ArrowUpRight, ArrowDownRight,
+  Printer, Loader2,
 } from 'lucide-react';
 import { CreateVoucherModal } from './CreateVoucherModal';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR } from './constants';
@@ -17,6 +19,7 @@ export default function VouchersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<VoucherType | ''>('');
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vouchers', typeFilter, search],
@@ -35,6 +38,17 @@ export default function VouchersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vouchers'] }),
   });
 
+  const handlePrint = async (v: Voucher) => {
+    setPrintingId(v.id);
+    try {
+      await downloadDocx(`/vouchers/${v.id}/download/pdf`, `${v.voucherNumber}.pdf`);
+    } catch {
+      alert('Failed to download voucher PDF.');
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
   const directionBadge = (dir: VoucherDirection) =>
     dir === 'CREDIT' ? (
       <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
@@ -51,7 +65,7 @@ export default function VouchersPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Vouchers</h1>
-          <p className="text-sm text-slate-500">All voucher types in one place — cash, bank, journal, credit/debit notes, receipts &amp; payments</p>
+          <p className="text-sm text-slate-500">Cash, bank, journal, receipts, payments, credit / debit notes — each ledger-ready and printable.</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -133,7 +147,16 @@ export default function VouchersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3.5 hidden lg:table-cell">
-                      <span className="text-slate-700">{v.partyName || v.invoice?.billToName || '—'}</span>
+                      {v.account ? (
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-800 truncate max-w-[180px]">{v.account.code} · {v.account.name}</div>
+                          {v.account.accountGroup?.name && (
+                            <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{v.account.accountGroup.name}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-700">{v.partyName || v.invoice?.billToName || '—'}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-right font-bold text-slate-900">
                       {formatCurrency(v.amount, v.currency)}
@@ -141,6 +164,14 @@ export default function VouchersPage() {
                     <td className="px-4 py-3.5 text-center">{directionBadge(v.direction)}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1 justify-end">
+                        <button
+                          onClick={() => handlePrint(v)}
+                          disabled={printingId === v.id}
+                          className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                          title="Print / Share PDF"
+                        >
+                          {printingId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                        </button>
                         {v.fileUrl && (
                           <a
                             href={v.fileUrl}
