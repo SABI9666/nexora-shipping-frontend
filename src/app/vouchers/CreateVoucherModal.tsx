@@ -43,6 +43,7 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync default direction when type changes (user can still override)
   useEffect(() => {
     setDirection(DEFAULT_DIRECTION[type]);
   }, [type]);
