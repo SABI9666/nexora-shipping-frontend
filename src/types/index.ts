@@ -170,11 +170,13 @@ export interface Invoice {
   paymentTerms?: string;
   notes?: string;
   orderId?: string;
+  accountId?: string | null;
   userId: string;
   createdAt: string;
   updatedAt: string;
   items: InvoiceItem[];
   orderRef?: { id: string; orderNumber: string; status?: string };
+  account?: { id: string; code: string; name: string; accountGroup?: { name: string; groupType: string } } | null;
   user?: Partial<User>;
 }
 
@@ -221,8 +223,6 @@ export interface Quotation {
   orderRef?: { id: string; orderNumber: string; status?: string };
   user?: Partial<User>;
 }
-
-// ── Masters ───────────────────────────────────────────────────────────────
 
 export type AccountGroupType = 'ASSET' | 'LIABILITIES' | 'PL' | 'TRADING';
 
@@ -342,8 +342,6 @@ export interface ItemMaster {
   createdAt: string;
   updatedAt: string;
 }
-
-// ── Vouchers ──────────────────────────────────────────────────────────
 
 export type VoucherType =
   | 'CASH'
