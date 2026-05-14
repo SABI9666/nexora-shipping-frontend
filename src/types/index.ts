@@ -76,15 +76,19 @@ export interface Order {
   length?: number;
   width?: number;
   height?: number;
+  cbm?: number;
   declaredValue?: number;
   price?: number;
   specialInstructions?: string;
   userId: string;
+  repId?: string | null;
+  repName?: string | null;
   createdAt: string;
   updatedAt: string;
   shipment?: Partial<Shipment>;
   user?: Partial<User>;
   documents?: Document[];
+  salesperson?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'> | null;
   _count?: { documents: number };
 }
 
@@ -103,7 +107,7 @@ export interface Document {
 }
 
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-export type InvoiceCurrency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR';
+export type InvoiceCurrency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR' | 'AED' | 'SAR';
 
 export interface InvoiceItem {
   id: string;
@@ -112,6 +116,12 @@ export interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   amount: number;
+  lineCurrency?: string;
+  exchangeRate?: number;
+  vatPercent?: number;
+  vatAmount?: number;
+  totalInBase?: number;
+  remarks?: string;
 }
 
 export interface Invoice {
@@ -130,6 +140,27 @@ export interface Invoice {
   shipFromAddress: string;
   shipFromCity: string;
   shipFromCountry: string;
+  companyTrn?: string;
+  jobNo?: string;
+  originPort?: string;
+  destPort?: string;
+  masterBl?: string;
+  houseBl?: string;
+  commodity?: string;
+  boeNumber?: string;
+  grossWeight?: string;
+  volume?: string;
+  packages?: string;
+  shipperName?: string;
+  consigneeName?: string;
+  customerRef?: string;
+  bankName?: string;
+  bankAddress?: string;
+  accountName?: string;
+  accountNumber?: string;
+  iban?: string;
+  swiftCode?: string;
+  amountInWords?: string;
   currency: InvoiceCurrency;
   subtotal: number;
   taxRate: number;
@@ -190,6 +221,129 @@ export interface Quotation {
   orderRef?: { id: string; orderNumber: string; status?: string };
   user?: Partial<User>;
 }
+
+// ── Masters ──────────────────────────────────────────────────────────────────
+
+export type AccountGroupType = 'ASSET' | 'LIABILITIES' | 'PL' | 'TRADING';
+
+export interface AccountGroup {
+  id: string;
+  code: string;
+  name: string;
+  groupType: AccountGroupType;
+  printOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerGroup {
+  id: string;
+  code: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubAccount {
+  id: string;
+  code: string;
+  name: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Salesperson {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Account {
+  id: string;
+  code: string;
+  name: string;
+  arabicName?: string;
+  accountGroupId: string;
+  destination?: string;
+  address?: string;
+  road?: string;
+  place?: string;
+  route?: string;
+  subRoute?: string;
+  phone1?: string;
+  mobile1?: string;
+  mobile2?: string;
+  email?: string;
+  financeEmail?: string;
+  contactPerson?: string;
+  acContactPerson?: string;
+  acMobileNo?: string;
+  rep?: string;
+  rep2?: string;
+  repId?: string;
+  rep2Id?: string;
+  opBalance: number;
+  opBalanceType: 'Credit' | 'Debit';
+  narration?: string;
+  paymentTerms?: string;
+  trn?: string;
+  creditDays: number;
+  creditInvoices: number;
+  creditLimit: number;
+  customerGroupId?: string;
+  deliveryAddress?: string;
+  createdAt: string;
+  updatedAt: string;
+  accountGroup?: Pick<AccountGroup, 'id' | 'code' | 'name' | 'groupType'>;
+  customerGroup?: Pick<CustomerGroup, 'id' | 'code' | 'name'>;
+  salesperson?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'>;
+  salesperson2?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'>;
+  subAccounts?: SubAccount[];
+}
+
+export interface BankAccount {
+  id: string;
+  label: string;
+  bankName: string;
+  bankAddress?: string;
+  accountName: string;
+  accountNumber: string;
+  iban?: string;
+  swiftCode?: string;
+  currency?: string;
+  companyTrn?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChargeItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  defaultRate?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ItemMaster {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Vouchers ─────────────────────────────────────────────────────────────────
 
 export type VoucherType =
   | 'CASH'
