@@ -1,0 +1,204 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import api from '@/lib/api';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { Voucher, VoucherType, VoucherDirection } from '@/types';
+import {
+  Plus, BookOpen, Trash2, Search, Paperclip, ArrowUpRight, ArrowDownRight,
+} from 'lucide-react';
+import { CreateVoucherModal } from './CreateVoucherModal';
+
+export const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
+  CASH: 'Cash Voucher',
+  PURCHASE: 'Purchase Voucher',
+  PAYMENT: 'Payment Voucher',
+  BANK: 'Bank Voucher',
+  JOURNAL: 'Journal Voucher',
+  RECEIPT: 'Customer Receipt',
+  SUPPLIER_PAYMENT: 'Supplier Payment',
+  CREDIT_NOTE: 'Credit Note',
+  DEBIT_NOTE: 'Debit Note',
+};
+
+export const VOUCHER_TYPE_COLOR: Record<VoucherType, string> = {
+  CASH: 'bg-amber-50 text-amber-700',
+  PURCHASE: 'bg-purple-50 text-purple-700',
+  PAYMENT: 'bg-rose-50 text-rose-700',
+  BANK: 'bg-sky-50 text-sky-700',
+  JOURNAL: 'bg-slate-100 text-slate-700',
+  RECEIPT: 'bg-emerald-50 text-emerald-700',
+  SUPPLIER_PAYMENT: 'bg-orange-50 text-orange-700',
+  CREDIT_NOTE: 'bg-teal-50 text-teal-700',
+  DEBIT_NOTE: 'bg-red-50 text-red-700',
+};
+
+export default function VouchersPage() {
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<VoucherType | ''>('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['vouchers', typeFilter, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '100' });
+      if (typeFilter) params.set('type', typeFilter);
+      if (search) params.set('search', search);
+      return api.get(`/vouchers?${params}`).then((r) => r.data);
+    },
+  });
+
+  const vouchers: Voucher[] = data?.data ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/vouchers/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vouchers'] }),
+  });
+
+  const directionBadge = (dir: VoucherDirection) =>
+    dir === 'CREDIT' ? (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+        <ArrowDownRight className="w-3 h-3" /> Credit
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700">
+        <ArrowUpRight className="w-3 h-3" /> Debit
+      </span>
+    );
+
+  return (
+    <DashboardLayout>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Vouchers</h1>
+          <p className="text-sm text-slate-500">All voucher types in one place — cash, bank, journal, credit/debit notes, receipts &amp; payments</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> New Voucher
+        </button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search voucher number, party, narration…"
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+          />
+        </div>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as VoucherType | '')}
+          className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white"
+        >
+          <option value="">All Types</option>
+          {(Object.keys(VOUCHER_TYPE_LABEL) as VoucherType[]).map((t) => (
+            <option key={t} value={t}>{VOUCHER_TYPE_LABEL[t]}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-brand-navy border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : vouchers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <BookOpen className="w-12 h-12 mb-3 opacity-40" />
+            <p className="font-medium text-slate-500">No vouchers yet</p>
+            <p className="text-xs mt-1">Click <span className="font-semibold">New Voucher</span> to create one</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Voucher #</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Reference</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Party</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Direction</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {vouchers.map((v) => (
+                  <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono font-semibold text-brand-navy">{v.voucherNumber}</td>
+                    <td className="px-4 py-3.5">
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${VOUCHER_TYPE_COLOR[v.type]}`}>
+                        {VOUCHER_TYPE_LABEL[v.type]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-500 hidden sm:table-cell">{formatDate(v.voucherDate)}</td>
+                    <td className="px-4 py-3.5 hidden md:table-cell">
+                      {v.invoice ? (
+                        <span className="text-xs font-mono bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                          INV · {v.invoice.invoiceNumber}
+                        </span>
+                      ) : v.order ? (
+                        <span className="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+                          ORD · {v.order.orderNumber}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 hidden lg:table-cell">
+                      <span className="text-slate-700">{v.partyName || v.invoice?.billToName || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-bold text-slate-900">
+                      {formatCurrency(v.amount, v.currency)}
+                    </td>
+                    <td className="px-4 py-3.5 text-center">{directionBadge(v.direction)}</td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        {v.fileUrl && (
+                          <a
+                            href={v.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                            title={v.fileName || 'Attachment'}
+                          >
+                            <Paperclip className="w-4 h-4" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => { if (confirm(`Delete voucher ${v.voucherNumber}?`)) deleteMutation.mutate(v.id); }}
+                          disabled={deleteMutation.isPending}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showCreate && (
+        <CreateVoucherModal
+          onClose={() => setShowCreate(false)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['vouchers'] })}
+        />
+      )}
+    </DashboardLayout>
+  );
+}

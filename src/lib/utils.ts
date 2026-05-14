@@ -19,8 +19,22 @@ export function formatRelativeTime(date: string | Date): string {
   return formatDistanceToNow(new Date(date), { addSuffix: true });
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+export function formatCurrency(amount: number, currency: string = 'AED'): string {
+  // Intl produces the most professional output for each ISO 4217 code:
+  //   USD → $1,234.56   EUR → €1,234.56   GBP → £1,234.56
+  //   AED → AED 1,234.56   SAR → SAR 1,234.56   INR → ₹1,234.56
+  // Default is AED because Nexora's primary currency is AED — places
+  // that don't carry currency context (e.g. Order.price, dashboard tiles)
+  // should NOT fall back to USD.
+  const code = (currency || 'AED').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+    }).format(amount);
+  } catch {
+    return `${code} ${amount.toFixed(2)}`;
+  }
 }
 
 export function formatFileSize(bytes: number): string {
