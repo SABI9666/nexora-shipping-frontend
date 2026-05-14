@@ -9,7 +9,7 @@ import {
   Voucher, VoucherType, VoucherDirection, VoucherReferenceType,
   Invoice, Order, VoucherReferenceValue,
 } from '@/types';
-import { VOUCHER_TYPE_LABEL } from './page';
+import { VOUCHER_TYPE_LABEL } from './constants';
 
 const DEFAULT_DIRECTION: Record<VoucherType, VoucherDirection> = {
   CASH: 'CREDIT',
