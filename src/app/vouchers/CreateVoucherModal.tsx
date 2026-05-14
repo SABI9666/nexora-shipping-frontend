@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Upload, Loader2, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { X, Upload, Loader2, FileText, ArrowUpRight, ArrowDownRight, Building2, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
   Voucher, VoucherType, VoucherDirection, VoucherReferenceType,
-  Invoice, Order, VoucherReferenceValue,
+  Invoice, Order, VoucherReferenceValue, Account, AccountGroupType,
 } from '@/types';
-import { VOUCHER_TYPE_LABEL } from './constants';
+import {
+  VOUCHER_TYPE_LABEL, VOUCHER_PARTY_LABEL,
+  VOUCHER_PARTY_FILTER, VOUCHER_CONTRA_FILTER, VOUCHER_SHOWS_CONTRA,
+} from './constants';
 
 const DEFAULT_DIRECTION: Record<VoucherType, VoucherDirection> = {
   CASH: 'CREDIT',
@@ -28,6 +31,105 @@ interface Props {
   onSuccess: (voucher: Voucher) => void;
 }
 
+function filterAccounts(accounts: Account[], groupTypes: AccountGroupType[] | null, search: string): Account[] {
+  const q = search.trim().toLowerCase();
+  return accounts.filter((a) => {
+    if (groupTypes && a.accountGroup && !groupTypes.includes(a.accountGroup.groupType)) return false;
+    if (!q) return true;
+    return (
+      a.code.toLowerCase().includes(q) ||
+      a.name.toLowerCase().includes(q) ||
+      (a.mobile1 || '').toLowerCase().includes(q) ||
+      (a.trn || '').toLowerCase().includes(q)
+    );
+  });
+}
+
+function AccountPicker({
+  label, icon, accounts, groupTypes, value, onChange, placeholder,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  accounts: Account[];
+  groupTypes: AccountGroupType[] | null;
+  value: string;
+  onChange: (id: string) => void;
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const filtered = filterAccounts(accounts, showAll ? null : groupTypes, search).slice(0, 50);
+  const selected = accounts.find((a) => a.id === value) || null;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          {icon}
+          {label}
+        </label>
+        {groupTypes && (
+          <button
+            type="button"
+            onClick={() => setShowAll((s) => !s)}
+            className="text-[11px] text-slate-400 hover:text-brand-navy"
+          >
+            {showAll ? 'Filter by group' : 'Show all accounts'}
+          </button>
+        )}
+      </div>
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder={`Search ${placeholder}…`}
+        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 mb-1.5"
+      />
+      {selected && (
+        <div className="flex items-center justify-between gap-2 mb-1.5 px-3 py-2 bg-brand-navy/5 border border-brand-navy/10 rounded-xl text-sm">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-brand-navy truncate">{selected.code} · {selected.name}</div>
+            <div className="text-xs text-slate-500 truncate">
+              {selected.accountGroup?.name || '—'}
+              {selected.mobile1 ? `  ·  ${selected.mobile1}` : ''}
+              {selected.trn ? `  ·  TRN ${selected.trn}` : ''}
+            </div>
+          </div>
+          <button type="button" onClick={() => onChange('')} className="text-slate-400 hover:text-rose-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
+        {filtered.length === 0 ? (
+          <div className="p-3 text-xs text-slate-400">
+            {accounts.length === 0
+              ? 'No accounts yet — add one in Account Master.'
+              : 'No matching accounts. Try “Show all accounts”.'}
+          </div>
+        ) : (
+          filtered.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => { onChange(a.id); setSearch(''); }}
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 ${
+                a.id === value ? 'bg-brand-navy/10' : ''
+              }`}
+            >
+              <div className="font-semibold text-slate-800 truncate">{a.code} · {a.name}</div>
+              <div className="text-xs text-slate-400 truncate">
+                {a.accountGroup?.name || '—'}
+                {a.mobile1 ? `  ·  ${a.mobile1}` : ''}
+                {a.trn ? `  ·  TRN ${a.trn}` : ''}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CreateVoucherModal({ onClose, onSuccess }: Props) {
   const [type, setType] = useState<VoucherType>('RECEIPT');
   const [direction, setDirection] = useState<VoucherDirection>(DEFAULT_DIRECTION['RECEIPT']);
@@ -35,6 +137,8 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
   const [referenceType, setReferenceType] = useState<VoucherReferenceType>('NONE');
   const [invoiceId, setInvoiceId] = useState('');
   const [orderId, setOrderId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [contraAccountId, setContraAccountId] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('AED');
   const [partyName, setPartyName] = useState('');
@@ -43,10 +147,16 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync default direction when type changes (user can still override)
   useEffect(() => {
     setDirection(DEFAULT_DIRECTION[type]);
   }, [type]);
+
+  const { data: accountList } = useQuery({
+    queryKey: ['vouchers-accounts'],
+    queryFn: () =>
+      api.get('/accounts?limit=1000').then((r) => r.data).catch(() => ({ data: [] })),
+  });
+  const accounts: Account[] = accountList?.data ?? [];
 
   const { data: invoiceList } = useQuery({
     queryKey: ['vouchers-invoice-options'],
@@ -93,6 +203,11 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
     return direction === 'CREDIT' ? ref.outstanding - amt : ref.outstanding + amt;
   }, [ref, amount, direction]);
 
+  const partyLabel = VOUCHER_PARTY_LABEL[type];
+  const partyFilter = VOUCHER_PARTY_FILTER[type];
+  const contraFilter = VOUCHER_CONTRA_FILTER[type];
+  const showsContra = VOUCHER_SHOWS_CONTRA[type];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -122,6 +237,8 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
       fd.append('referenceType', referenceType);
       if (referenceType === 'INVOICE') fd.append('invoiceId', invoiceId);
       if (referenceType === 'ORDER') fd.append('orderId', orderId);
+      if (accountId) fd.append('accountId', accountId);
+      if (contraAccountId) fd.append('contraAccountId', contraAccountId);
       if (partyName) fd.append('partyName', partyName);
       if (narration) fd.append('narration', narration);
       if (file) fd.append('file', file);
@@ -147,12 +264,12 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <form
         onSubmit={handleSubmit}
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900">New Voucher</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Upload a voucher, choose an invoice or order, and the amount will be added or deducted per voucher type.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Pick the voucher type — the party picker filters to suppliers or customers automatically.</p>
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
             <X className="w-4 h-4" />
@@ -202,8 +319,33 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
             </div>
           </div>
 
+          {/* Party account picker (auto-filtered by voucher type) */}
+          <AccountPicker
+            label={partyLabel}
+            icon={<Building2 className="w-3.5 h-3.5" />}
+            accounts={accounts}
+            groupTypes={partyFilter}
+            value={accountId}
+            onChange={setAccountId}
+            placeholder={partyLabel.toLowerCase()}
+          />
+
+          {/* Contra account (cash/bank) — hidden for credit/debit notes */}
+          {showsContra && (
+            <AccountPicker
+              label="Contra account (cash / bank)"
+              icon={<Wallet className="w-3.5 h-3.5" />}
+              accounts={accounts}
+              groupTypes={contraFilter}
+              value={contraAccountId}
+              onChange={setContraAccountId}
+              placeholder="cash or bank"
+            />
+          )}
+
+          {/* Reference */}
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Reference</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Linked to</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {(['NONE', 'INVOICE', 'ORDER'] as VoucherReferenceType[]).map((rt) => (
                 <button
@@ -216,7 +358,7 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  {rt === 'NONE' ? 'None' : rt === 'INVOICE' ? 'Invoice' : 'Order'}
+                  {rt === 'NONE' ? 'No reference' : rt === 'INVOICE' ? 'Invoice' : 'Order'}
                 </button>
               ))}
             </div>
@@ -331,11 +473,11 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Party</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Party label (override)</label>
               <input
                 value={partyName}
                 onChange={(e) => setPartyName(e.target.value)}
-                placeholder="Customer / Supplier name"
+                placeholder="Only if no Account is selected"
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20"
               />
             </div>
