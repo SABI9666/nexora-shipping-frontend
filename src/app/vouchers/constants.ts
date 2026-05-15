@@ -24,7 +24,6 @@ export const VOUCHER_TYPE_COLOR: Record<VoucherType, string> = {
   DEBIT_NOTE: 'bg-red-50 text-red-700',
 };
 
-// Label that fits the voucher context, e.g. "Supplier" for PURCHASE.
 export const VOUCHER_PARTY_LABEL: Record<VoucherType, string> = {
   CASH: 'Party',
   PURCHASE: 'Supplier',
@@ -37,9 +36,6 @@ export const VOUCHER_PARTY_LABEL: Record<VoucherType, string> = {
   DEBIT_NOTE: 'Issued to (Supplier)',
 };
 
-// Suggested account group filter for the party picker.
-// Customers / Debtors live under ASSET; Suppliers / Creditors live under
-// LIABILITIES. `null` = show every account in the master.
 export const VOUCHER_PARTY_FILTER: Record<VoucherType, AccountGroupType[] | null> = {
   CASH: null,
   PURCHASE: ['LIABILITIES'],
@@ -52,8 +48,6 @@ export const VOUCHER_PARTY_FILTER: Record<VoucherType, AccountGroupType[] | null
   DEBIT_NOTE: ['LIABILITIES'],
 };
 
-// Contra account is typically a cash/bank account (asset). Credit / debit
-// notes don't move money so contra is irrelevant there.
 export const VOUCHER_CONTRA_FILTER: Record<VoucherType, AccountGroupType[] | null> = {
   CASH: ['ASSET'],
   PURCHASE: ['ASSET'],
@@ -76,4 +70,27 @@ export const VOUCHER_SHOWS_CONTRA: Record<VoucherType, boolean> = {
   SUPPLIER_PAYMENT: true,
   CREDIT_NOTE: false,
   DEBIT_NOTE: false,
+};
+
+// Types that should use the Supplier Payment Voucher modal (bill
+// allocation + cheque details + dedicated PDF format).
+export const VOUCHER_USES_PAYMENT_FORM: Record<VoucherType, boolean> = {
+  CASH: false,
+  PURCHASE: true,
+  PAYMENT: true,
+  BANK: false,
+  JOURNAL: false,
+  RECEIPT: false,
+  SUPPLIER_PAYMENT: true,
+  CREDIT_NOTE: false,
+  DEBIT_NOTE: false,
+};
+
+export type VoucherPaymentMethod = 'CASH' | 'CHEQUE' | 'BANK_TRANSFER' | 'CONTRA';
+
+export const PAYMENT_METHOD_LABEL: Record<VoucherPaymentMethod, string> = {
+  CASH: 'Cash',
+  CHEQUE: 'Cheque',
+  BANK_TRANSFER: 'Bank Transfer',
+  CONTRA: 'Contra',
 };
