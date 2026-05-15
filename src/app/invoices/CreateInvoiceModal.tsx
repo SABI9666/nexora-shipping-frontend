@@ -91,10 +91,10 @@ const emptyForm = (): InvoiceForm => {
   return {
     orderId: '',
     accountId: '',
-    billToName: '', billToAddress: '', billToCity: '', billToCountry: 'ARE',
+    billToName: '', billToAddress: '', billToCity: '', billToCountry: 'DXB',
     billToEmail: '', billToPhone: '',
     shipFromName: 'Nexora Shipping LLC', shipFromAddress: 'Khansaheb warehouse B1-14, Al Qusais Industrial Area 1',
-    shipFromCity: 'Dubai', shipFromCountry: 'ARE',
+    shipFromCity: 'Dubai', shipFromCountry: 'DXB',
     companyTrn: bd.companyTrn ?? '105413106300003',
     jobNo: '', originPort: '', destPort: '',
     masterBl: '', houseBl: '', commodity: '',
@@ -120,13 +120,13 @@ function formFromInvoice(inv: Invoice): InvoiceForm {
     billToName: inv.billToName ?? '',
     billToAddress: inv.billToAddress ?? '',
     billToCity: inv.billToCity ?? '',
-    billToCountry: inv.billToCountry ?? 'ARE',
+    billToCountry: normalizeCountryCode(inv.billToCountry) || 'DXB',
     billToEmail: inv.billToEmail ?? '',
     billToPhone: inv.billToPhone ?? '',
     shipFromName: inv.shipFromName ?? 'Nexora Shipping LLC',
     shipFromAddress: inv.shipFromAddress ?? '',
     shipFromCity: inv.shipFromCity ?? '',
-    shipFromCountry: inv.shipFromCountry ?? 'ARE',
+    shipFromCountry: normalizeCountryCode(inv.shipFromCountry) || 'DXB',
     companyTrn: inv.companyTrn ?? '105413106300003',
     jobNo: inv.jobNo ?? '',
     originPort: inv.originPort ?? '',
@@ -266,7 +266,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
     }));
   };
 
-  // When the user picks a Customer Account, auto-fill the Bill To block.
   const applyAccount = (id: string) => {
     setForm((f) => ({ ...f, accountId: id }));
     if (!id) return;
@@ -307,13 +306,13 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
         billToName: form.billToName,
         billToAddress: form.billToAddress,
         billToCity: form.billToCity,
-        billToCountry: form.billToCountry,
+        billToCountry: normalizeCountryCode(form.billToCountry) || form.billToCountry,
         billToEmail: form.billToEmail || undefined,
         billToPhone: form.billToPhone || undefined,
         shipFromName: form.shipFromName,
         shipFromAddress: form.shipFromAddress,
         shipFromCity: form.shipFromCity,
-        shipFromCountry: form.shipFromCountry,
+        shipFromCountry: normalizeCountryCode(form.shipFromCountry) || form.shipFromCountry,
         companyTrn: form.companyTrn || undefined,
         jobNo: form.jobNo || undefined,
         originPort: form.originPort || undefined,
@@ -441,7 +440,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
             </div>
           )}
 
-          {/* Customer Account picker — links the invoice to Account Master so it shows in Account Statement. */}
           <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
             <div className="flex items-center justify-between gap-3 mb-2">
               <label className="text-xs font-semibold text-brand-navy uppercase tracking-wide">
@@ -594,7 +592,6 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
             )}
           </div>
 
-          {/* Shipment Details */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Shipment Details</p>
             <div className="grid grid-cols-3 gap-3">

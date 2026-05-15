@@ -1,7 +1,12 @@
 // ISO 3166-1 alpha-3 country list, sorted by display name. Used in any
 // country-picking dropdown so we have one consistent vocabulary across forms.
+//
+// Project convention: the UAE is stored as `DXB` (not the ISO `ARE`) because
+// the team aligns invoices and tracking with Dubai's airport / port code.
+// `normalizeCountryCode` always converts a stored `ARE` into `DXB` so legacy
+// records still display correctly.
 export interface CountryOption {
-  code: string; // alpha-3
+  code: string; // alpha-3 (DXB for UAE — see note above)
   name: string;
 }
 
@@ -192,7 +197,7 @@ export const COUNTRIES: CountryOption[] = [
   { code: 'TUV', name: 'Tuvalu' },
   { code: 'UGA', name: 'Uganda' },
   { code: 'UKR', name: 'Ukraine' },
-  { code: 'ARE', name: 'United Arab Emirates' },
+  { code: 'DXB', name: 'United Arab Emirates' },
   { code: 'GBR', name: 'United Kingdom' },
   { code: 'USA', name: 'United States' },
   { code: 'URY', name: 'Uruguay' },
@@ -207,7 +212,7 @@ export const COUNTRIES: CountryOption[] = [
 ];
 
 const ALPHA2_TO_3: Record<string, string> = {
-  AE: 'ARE', SA: 'SAU', QA: 'QAT', KW: 'KWT', OM: 'OMN', BH: 'BHR',
+  AE: 'DXB', SA: 'SAU', QA: 'QAT', KW: 'KWT', OM: 'OMN', BH: 'BHR',
   IN: 'IND', PK: 'PAK', BD: 'BGD', LK: 'LKA', NP: 'NPL', PH: 'PHL',
   CN: 'CHN', HK: 'HKG', SG: 'SGP', MY: 'MYS', TH: 'THA', JP: 'JPN', KR: 'KOR',
   GB: 'GBR', IE: 'IRL', FR: 'FRA', DE: 'DEU', ES: 'ESP', IT: 'ITA',
@@ -217,16 +222,22 @@ const ALPHA2_TO_3: Record<string, string> = {
   MX: 'MEX', BR: 'BRA', AR: 'ARG', US: 'USA',
 };
 
+// Legacy aliases — inputs we still want to silently rewrite. Keeps historical
+// rows that were saved as ARE rendering correctly under the DXB convention.
+const CODE_ALIASES: Record<string, string> = {
+  ARE: 'DXB',
+};
+
 export function normalizeCountryCode(input?: string | null): string {
   if (!input) return '';
   const v = input.trim().toUpperCase();
-  if (v.length === 3) return v;
+  if (v.length === 3) return CODE_ALIASES[v] ?? v;
   if (v.length === 2) return ALPHA2_TO_3[v] ?? v;
   return v;
 }
 
 const COUNTRY_KEYWORDS: { code: string; patterns: RegExp[] }[] = [
-  { code: 'ARE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
+  { code: 'DXB', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
   { code: 'SAU', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
   { code: 'QAT', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
   { code: 'KWT', patterns: [/\bKuwait\b/i] },
@@ -281,7 +292,7 @@ export function inferCountryCode(text: string): string | null {
     if (patterns.some((p) => p.test(text))) return code;
   }
   const trailingIso3 = /[\s,]([A-Za-z]{3})\s*$/.exec(text.trim());
-  if (trailingIso3) return trailingIso3[1].toUpperCase();
+  if (trailingIso3) return normalizeCountryCode(trailingIso3[1]);
   const trailingIso2 = /[\s,]([A-Za-z]{2})\s*$/.exec(text.trim());
   if (trailingIso2) return normalizeCountryCode(trailingIso2[1]);
   return null;
