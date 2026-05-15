@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText } from 'lucide-react';
 import api from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { Voucher, VoucherType, Account, Salesperson, AccountGroupType } from '@/types';
-import {
-  VOUCHER_TYPE_LABEL, VOUCHER_PARTY_FILTER, VOUCHER_CONTRA_FILTER,
-  PAYMENT_METHOD_LABEL, VoucherPaymentMethod,
-} from './constants';
+import { formatDate } from '@/lib/utils';
+import { Voucher, VoucherType, Account, Salesperson, BankAccount } from '@/types';
+import { VOUCHER_TYPE_LABEL, PAYMENT_METHOD_LABEL, VoucherPaymentMethod } from './constants';
 
 interface Props {
   type: VoucherType;
@@ -42,26 +39,45 @@ interface AllocationRow {
   isCustom: boolean;
 }
 
-function filterAccounts(accounts: Account[], groupTypes: AccountGroupType[] | null, search: string): Account[] {
-  const q = search.trim().toLowerCase();
-  return accounts.filter((a) => {
-    if (groupTypes && a.accountGroup && !groupTypes.includes(a.accountGroup.groupType)) return false;
-    if (!q) return true;
-    return (
-      a.code.toLowerCase().includes(q) ||
-      a.name.toLowerCase().includes(q) ||
-      (a.mobile1 || '').toLowerCase().includes(q) ||
-      (a.trn || '').toLowerCase().includes(q)
-    );
-  });
+interface InvoiceSearchResult {
+  id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  billToName: string;
+  total: number;
+  currency: string;
+  status: string;
+  jobNo?: string | null;
+  customerRef?: string | null;
+}
+
+function searchAccounts(accounts: Account[], q: string, limit = 30): Account[] {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return [];
+  return accounts.filter((a) =>
+    a.code.toLowerCase().includes(needle) ||
+    a.name.toLowerCase().includes(needle) ||
+    (a.mobile1 || '').toLowerCase().includes(needle) ||
+    (a.trn || '').toLowerCase().includes(needle),
+  ).slice(0, limit);
+}
+
+function searchBanks(banks: BankAccount[], q: string, limit = 30): BankAccount[] {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return banks.slice(0, limit);
+  return banks.filter((b) =>
+    b.label.toLowerCase().includes(needle) ||
+    b.bankName.toLowerCase().includes(needle) ||
+    b.accountNumber.toLowerCase().includes(needle) ||
+    (b.iban || '').toLowerCase().includes(needle),
+  ).slice(0, limit);
 }
 
 export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props) {
-  // Form state
   const [voucherDate, setVoucherDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>('CHEQUE');
+  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>('CASH');
   const [accountId, setAccountId] = useState('');
-  const [contraAccountId, setContraAccountId] = useState('');
+  const [bankAccountId, setBankAccountId] = useState('');
   const [collectedRepId, setCollectedRepId] = useState('');
   const [chequeNumber, setChequeNumber] = useState('');
   const [chequeDate, setChequeDate] = useState('');
@@ -74,17 +90,27 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
   const [narration, setNarration] = useState('');
   const [currency, setCurrency] = useState('AED');
   const [allocations, setAllocations] = useState<AllocationRow[]>([]);
-  const [partyAccountSearch, setPartyAccountSearch] = useState('');
-  const [contraSearch, setContraSearch] = useState('');
+
+  const [partySearch, setPartySearch] = useState('');
+  const [bankSearch, setBankSearch] = useState('');
+  const [bankOpen, setBankOpen] = useState(false);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceSearchOpen, setInvoiceSearchOpen] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Data fetching
   const { data: accountList } = useQuery({
     queryKey: ['vouchers-accounts'],
     queryFn: () => api.get('/accounts?limit=1000').then((r) => r.data).catch(() => ({ data: [] })),
   });
   const accounts: Account[] = accountList?.data ?? [];
+
+  const { data: bankList } = useQuery({
+    queryKey: ['vouchers-bank-accounts'],
+    queryFn: () => api.get('/bank-accounts').then((r) => r.data).catch(() => ({ data: [] })),
+  });
+  const banks: BankAccount[] = bankList?.data ?? [];
 
   const { data: salespersonList } = useQuery({
     queryKey: ['vouchers-salespersons'],
@@ -99,12 +125,25 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
   });
   const openBills: OpenBill[] = openBillsData?.data ?? [];
 
-  // When party changes, rebuild the allocation table from open bills
+  const { data: invoiceSearchData } = useQuery({
+    queryKey: ['voucher-invoice-search', invoiceSearch],
+    enabled: invoiceSearch.trim().length >= 2,
+    queryFn: () =>
+      api.get(`/invoices?limit=15&search=${encodeURIComponent(invoiceSearch.trim())}`)
+        .then((r) => r.data)
+        .catch(() => ({ data: [] })),
+  });
+  const invoiceResults: InvoiceSearchResult[] = invoiceSearchData?.data ?? [];
+
   useEffect(() => {
-    if (!accountId) {
-      setAllocations([]);
-      return;
+    if (!bankAccountId && banks.length > 0) {
+      const def = banks.find((b) => b.isDefault) ?? banks[0];
+      setBankAccountId(def.id);
     }
+  }, [banks, bankAccountId]);
+
+  useEffect(() => {
+    if (!accountId) { setAllocations([]); return; }
     setAllocations(openBills.map((b) => ({
       invoiceId: b.id,
       jobNo: b.jobNo || '',
@@ -116,11 +155,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
       selected: false,
       isCustom: false,
     })));
-    // Default currency from first bill
     if (openBills.length > 0 && openBills[0].currency) setCurrency(openBills[0].currency);
   }, [accountId, openBills]);
 
-  // Auto-fill issuedTo when party changes
   useEffect(() => {
     if (!accountId) return;
     const a = accounts.find((x) => x.id === accountId);
@@ -129,16 +166,12 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
   }, [accountId]);
 
   const selectedAccount = accounts.find((a) => a.id === accountId) || null;
-  const selectedContra = accounts.find((a) => a.id === contraAccountId) || null;
+  const selectedBank = banks.find((b) => b.id === bankAccountId) || null;
   const selectedRep = salespersons.find((s) => s.id === collectedRepId) || null;
 
-  // Filter dropdown options
-  const partyFilter = VOUCHER_PARTY_FILTER[type];
-  const contraFilter = VOUCHER_CONTRA_FILTER[type];
-  const partyOptions = filterAccounts(accounts, partyFilter, partyAccountSearch).slice(0, 30);
-  const contraOptions = filterAccounts(accounts, contraFilter, contraSearch).slice(0, 30);
+  const partyOptions = useMemo(() => searchAccounts(accounts, partySearch), [accounts, partySearch]);
+  const bankOptions = useMemo(() => searchBanks(banks, bankSearch), [banks, bankSearch]);
 
-  // Totals
   const totalAllocated = useMemo(
     () => allocations.filter((r) => r.selected).reduce((s, r) => s + (r.allocatedAmount || 0), 0),
     [allocations],
@@ -148,40 +181,51 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
     setAllocations((rows) => rows.map((r, i) => {
       if (i !== idx) return r;
       const next = { ...r, selected: !r.selected };
-      // When selected, default the received amount to the full balance
       if (next.selected && next.allocatedAmount === 0) next.allocatedAmount = next.billAmount;
       if (!next.selected) next.allocatedAmount = 0;
       return next;
     }));
   };
-
   const setAllocAmount = (idx: number, value: number) => {
     setAllocations((rows) => rows.map((r, i) => i === idx
       ? { ...r, allocatedAmount: value, selected: value !== 0 || r.selected }
       : r));
   };
-
   const addCustomRow = () => {
     setAllocations((rows) => [
       ...rows,
       {
-        invoiceId: '',
-        jobNo: '',
-        refNo: 'Adv.',
-        invoiceNumber: '',
-        invoiceDate: voucherDate,
-        billAmount: 0,
-        allocatedAmount: 0,
-        selected: true,
-        isCustom: true,
+        invoiceId: '', jobNo: '', refNo: 'Adv.', invoiceNumber: '',
+        invoiceDate: voucherDate, billAmount: 0, allocatedAmount: 0,
+        selected: true, isCustom: true,
       },
     ]);
   };
-
+  const addInvoiceFromSearch = (inv: InvoiceSearchResult) => {
+    if (allocations.some((r) => r.invoiceId === inv.id)) {
+      setInvoiceSearch(''); setInvoiceSearchOpen(false);
+      return;
+    }
+    setAllocations((rows) => [
+      ...rows,
+      {
+        invoiceId: inv.id,
+        jobNo: inv.jobNo || '',
+        refNo: inv.customerRef || '',
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate?.slice(0, 10) || '',
+        billAmount: inv.total,
+        allocatedAmount: inv.total,
+        selected: true,
+        isCustom: false,
+      },
+    ]);
+    if (inv.currency) setCurrency(inv.currency);
+    setInvoiceSearch(''); setInvoiceSearchOpen(false);
+  };
   const updateCustomRow = (idx: number, patch: Partial<AllocationRow>) => {
     setAllocations((rows) => rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
   };
-
   const removeRow = (idx: number) => {
     setAllocations((rows) => rows.filter((_, i) => i !== idx));
   };
@@ -204,7 +248,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         currency,
         referenceType: 'NONE',
         accountId,
-        contraAccountId: contraAccountId || undefined,
+        bankAccountId: bankAccountId || undefined,
         collectedRepId: collectedRepId || undefined,
         paymentMethod,
         chequeNumber: chequeNumber || undefined,
@@ -252,7 +296,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900">{VOUCHER_TYPE_LABEL[type]}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Select a supplier, then tick the bills you&apos;re paying.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Select a supplier, pick the bank account, then tick the bills you&apos;re paying.</p>
           </div>
           <button type="button" onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
@@ -261,7 +305,6 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
-          {/* Row 1: Date / By / A/c */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className={labelCls}>Date</label>
@@ -275,53 +318,86 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                 ))}
               </select>
             </div>
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 relative">
               <label className={labelCls}>A/c (Bank / Cash)</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <input value={contraSearch} onChange={(e) => setContraSearch(e.target.value)}
-                  placeholder={selectedContra ? `${selectedContra.code} · ${selectedContra.name}` : 'Search bank / cash account…'}
-                  className={`${inputCls} pl-8`} />
-              </div>
-              {contraSearch && (
-                <div className="mt-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg bg-white shadow-sm">
-                  {contraOptions.length === 0 ? (
-                    <div className="p-2 text-xs text-slate-400">No accounts match.</div>
-                  ) : contraOptions.map((a) => (
-                    <button type="button" key={a.id}
-                      onClick={() => { setContraAccountId(a.id); setContraSearch(''); }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-brand-navy/5">
-                      <span className="font-semibold text-brand-navy">{a.code}</span>
-                      <span className="text-slate-700"> · {a.name}</span>
-                      {a.accountGroup && <span className="text-xs text-slate-400"> · {a.accountGroup.name}</span>}
-                    </button>
-                  ))}
+              <button type="button" onClick={() => setBankOpen((v) => !v)}
+                className={`${inputCls} text-left flex items-center justify-between gap-2`}>
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <Landmark className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  {selectedBank ? (
+                    <span className="truncate">
+                      <span className="font-semibold text-brand-navy">{selectedBank.label}</span>
+                      <span className="text-slate-500 ml-1.5">{selectedBank.bankName} · {selectedBank.accountNumber}</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Select bank / cash account…</span>
+                  )}
+                </span>
+                <span className="text-xs text-slate-400">{bankOpen ? '▲' : '▼'}</span>
+              </button>
+              {bankOpen && (
+                <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg">
+                  <div className="p-2 border-b border-slate-100">
+                    <input value={bankSearch} onChange={(e) => setBankSearch(e.target.value)}
+                      placeholder="Search bank / account number…" autoFocus
+                      className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded" />
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {bankOptions.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-400">
+                        {banks.length === 0
+                          ? 'No bank accounts yet — add one in Bank Accounts master.'
+                          : 'No matches.'}
+                      </div>
+                    ) : bankOptions.map((b) => (
+                      <button key={b.id} type="button"
+                        onClick={() => { setBankAccountId(b.id); setBankOpen(false); setBankSearch(''); }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 ${b.id === bankAccountId ? 'bg-brand-navy/10' : ''}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-brand-navy truncate">{b.label}{b.isDefault ? ' ★' : ''}</div>
+                            <div className="text-xs text-slate-500 truncate">
+                              {b.bankName} · {b.accountNumber}
+                              {b.iban ? ` · ${b.iban}` : ''}
+                            </div>
+                          </div>
+                          {b.currency && <span className="text-[10px] font-mono text-slate-400">{b.currency}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Row 2: Party / Collected Rep */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label className={labelCls}>Party Code <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <input value={partyAccountSearch} onChange={(e) => setPartyAccountSearch(e.target.value)}
-                  placeholder={selectedAccount ? `${selectedAccount.code} · ${selectedAccount.name}` : 'Search supplier / customer…'}
+                <input value={partySearch} onChange={(e) => setPartySearch(e.target.value)}
+                  placeholder={selectedAccount ? `${selectedAccount.code} · ${selectedAccount.name}` : 'Search supplier / customer / any account from master…'}
                   className={`${inputCls} pl-8`} />
               </div>
-              {partyAccountSearch && (
-                <div className="mt-1 max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-white shadow-sm">
+              {partySearch && (
+                <div className="mt-1 max-h-44 overflow-y-auto border border-slate-200 rounded-lg bg-white shadow-sm">
                   {partyOptions.length === 0 ? (
                     <div className="p-2 text-xs text-slate-400">No accounts match.</div>
                   ) : partyOptions.map((a) => (
                     <button type="button" key={a.id}
-                      onClick={() => { setAccountId(a.id); setPartyAccountSearch(''); }}
+                      onClick={() => { setAccountId(a.id); setPartySearch(''); }}
                       className="w-full text-left px-3 py-1.5 text-sm hover:bg-brand-navy/5">
-                      <span className="font-semibold text-brand-navy">{a.code}</span>
-                      <span className="text-slate-700"> · {a.name}</span>
-                      {a.mobile1 && <span className="text-xs text-slate-400"> · {a.mobile1}</span>}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="font-semibold text-brand-navy">{a.code}</span>
+                          <span className="text-slate-700"> · {a.name}</span>
+                          {a.mobile1 && <span className="text-xs text-slate-400"> · {a.mobile1}</span>}
+                        </span>
+                        {a.accountGroup && (
+                          <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">{a.accountGroup.name}</span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -355,7 +431,6 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
             </div>
           </div>
 
-          {/* Cheque details */}
           {paymentMethod === 'CHEQUE' && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -389,7 +464,6 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
             </div>
           )}
 
-          {/* Issued To + Against + Narration */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label className={labelCls}>Issued To</label>
@@ -414,17 +488,45 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
               placeholder="e.g. GIVEN TO GSM" className={`${inputCls} resize-none`} />
           </div>
 
-          {/* Bills allocation table */}
+          <div className="relative">
+            <label className={labelCls}>Find &amp; Add Invoice</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input value={invoiceSearch}
+                onChange={(e) => { setInvoiceSearch(e.target.value); setInvoiceSearchOpen(true); }}
+                onFocus={() => setInvoiceSearchOpen(true)}
+                placeholder="Type invoice number or customer to add a specific invoice…"
+                className={`${inputCls} pl-8`} />
+              {invoiceSearchOpen && invoiceSearch.trim().length >= 2 && (
+                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  {invoiceResults.length === 0 ? (
+                    <div className="p-2 text-xs text-slate-400">No invoices match.</div>
+                  ) : invoiceResults.map((inv) => (
+                    <button key={inv.id} type="button" onClick={() => addInvoiceFromSearch(inv)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-brand-navy truncate">{inv.invoiceNumber}</div>
+                        <div className="text-xs text-slate-500 truncate">{inv.billToName}</div>
+                      </div>
+                      <div className="text-right text-xs flex-shrink-0">
+                        <div className="font-semibold text-slate-800">{inv.currency} {inv.total.toFixed(2)}</div>
+                        <div className="text-slate-400">{inv.status}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Bill Allocation {accountId ? `· ${allocations.length} open ` : ''}
+                Bill Allocation {accountId ? `· ${allocations.length} loaded` : ''}
                 {billsLoading && <Loader2 className="w-3 h-3 animate-spin inline-block ml-1" />}
               </p>
-              {accountId && (
-                <button type="button" onClick={addCustomRow}
-                  className="text-xs font-semibold text-brand-navy hover:underline">+ Add advance / line</button>
-              )}
+              <button type="button" onClick={addCustomRow}
+                className="text-xs font-semibold text-brand-navy hover:underline">+ Add advance / manual line</button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -444,7 +546,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                 <tbody className="divide-y divide-slate-100">
                   {allocations.length === 0 && (
                     <tr><td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
-                      {accountId ? 'No open bills for this party.' : 'Select a party to load open bills.'}
+                      {accountId
+                        ? 'No open bills for this party. Use "Find & Add Invoice" above to add a specific invoice.'
+                        : 'Select a party to load open bills (or use "Find & Add Invoice" above).'}
                     </td></tr>
                   )}
                   {allocations.map((row, idx) => {
@@ -495,10 +599,8 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                           {balance.toFixed(2)}
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          {row.isCustom && (
-                            <button type="button" onClick={() => removeRow(idx)}
-                              className="text-slate-300 hover:text-rose-600 text-xs">×</button>
-                          )}
+                          <button type="button" onClick={() => removeRow(idx)}
+                            className="text-slate-300 hover:text-rose-600 text-xs">×</button>
                         </td>
                       </tr>
                     );
@@ -527,9 +629,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">
-            Voucher number auto-generated on save
-          </div>
+          <div className="text-xs text-slate-500">Voucher number auto-generated on save</div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
