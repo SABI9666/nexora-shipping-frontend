@@ -11,6 +11,11 @@ interface DashboardLayoutProps {
   title?: string;
 }
 
+// Auto-logout after this many minutes of no user activity. Activity = any
+// mouse / keyboard / touch / scroll event on the window. The check runs every
+// 30 seconds so a stale tab gets caught within ~30s of the deadline.
+const INACTIVITY_LOGOUT_MINUTES = 5;
+
 export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { user, loading, logout, isAdmin } = useAuth();
   const router = useRouter();
@@ -22,6 +27,37 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       router.push('/auth/login');
     }
   }, [user, loading, router]);
+
+  // ── Inactivity auto-logout ───────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const limitMs = INACTIVITY_LOGOUT_MINUTES * 60 * 1000;
+    let lastActivity = Date.now();
+    const bump = () => { lastActivity = Date.now(); };
+    const events: (keyof WindowEventMap)[] = [
+      'mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel', 'click',
+    ];
+    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    // Reset the timer when the tab regains focus too, so a user returning to
+    // an idle tab doesn't get instantly kicked out before they interact.
+    const onVisible = () => { if (!document.hidden) bump(); };
+    document.addEventListener('visibilitychange', onVisible);
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity > limitMs) {
+        clearInterval(interval);
+        events.forEach((e) => window.removeEventListener(e, bump));
+        document.removeEventListener('visibilitychange', onVisible);
+        logout();
+      }
+    }, 30 * 1000);
+
+    return () => {
+      clearInterval(interval);
+      events.forEach((e) => window.removeEventListener(e, bump));
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user, logout]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -58,9 +94,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
 
-      {/* Main content */}
       <div className="flex-1 ml-64">
-        {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -78,7 +112,6 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-red rounded-full" />
             </button>
 
-            {/* User menu */}
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
@@ -103,6 +136,9 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                         {user.role}
                       </span>
                     </div>
+                    <p className="text-[10px] text-slate-400 mt-2">
+                      Signed out automatically after {INACTIVITY_LOGOUT_MINUTES} min of inactivity.
+                    </p>
                   </div>
                   <button
                     onClick={() => { setMenuOpen(false); logout(); }}
@@ -118,7 +154,6 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           </div>
         </header>
 
-        {/* Page content */}
         <main className="p-6">
           {children}
         </main>

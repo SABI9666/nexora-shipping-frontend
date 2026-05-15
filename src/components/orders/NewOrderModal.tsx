@@ -23,7 +23,7 @@ const schema = z.object({
 });
 
 const COUNTRY_KEYWORDS: { code: string; patterns: RegExp[] }[] = [
-  { code: 'ARE', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
+  { code: 'DXB', patterns: [/\bU\.?A\.?E\.?\b/i, /\bUnited\s+Arab\s+Emirates\b/i, /\bDubai\b/i, /\bAbu\s*Dhabi\b/i, /\bSharjah\b/i, /\bAjman\b/i, /\bRas\s+al[-\s]?Khaimah\b/i, /\bFujairah\b/i, /\bUmm\s+al[-\s]?Quwain\b/i] },
   { code: 'SAU', patterns: [/\bSaudi\s+Arabia\b/i, /\bKSA\b/, /\bRiyadh\b/i, /\bJeddah\b/i, /\bDammam\b/i, /\bMecca\b/i, /\bMedina\b/i] },
   { code: 'QAT', patterns: [/\bQatar\b/i, /\bDoha\b/i] },
   { code: 'KWT', patterns: [/\bKuwait\b/i] },
@@ -78,7 +78,7 @@ function inferCountryCode(text: string): string | null {
     if (patterns.some((p) => p.test(text))) return code;
   }
   const trailingIso = /[\s,]([A-Z]{3})\s*$/.exec(text.trim());
-  if (trailingIso) return trailingIso[1];
+  if (trailingIso) return trailingIso[1] === 'ARE' ? 'DXB' : trailingIso[1];
   return null;
 }
 
@@ -102,7 +102,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     defaultValues: { pickupCountry: 'USA', deliveryCountry: 'USA' },
   });
 
-  // Fetch masters for dropdowns — gracefully handles 404 when backend not yet deployed
   const { data: accounts } = useQuery({
     queryKey: ['accounts-for-order'],
     queryFn: () => api.get('/accounts?limit=500').then((r) => r.data.data as Account[]).catch(() => [] as Account[]),
@@ -134,7 +133,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
     if (inferred) setValue('deliveryCountry', inferred, { shouldValidate: true });
     const note = `Customer: ${a.code} — ${a.name}${a.mobile1 ? ' · ' + a.mobile1 : ''}${a.trn ? ' · TRN ' + a.trn : ''}`;
     setValue('specialInstructions', note);
-    // Auto-pick the account's primary salesperson if one is set
     if (a.repId && !selectedRepId) {
       setSelectedRepId(a.repId);
     }
@@ -212,7 +210,7 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
             {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
             <div className="flex gap-3">
               <button onClick={handleConfirm} className="flex-1 btn-primary py-2.5">
-                Confirm & Create Shipment
+                Confirm &amp; Create Shipment
               </button>
               <button onClick={onSuccess} className="flex-1 btn-outline py-2.5">
                 Save as Draft
@@ -223,7 +221,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
           <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
             {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
-            {/* Customer picker (from Masters) */}
             <div className="bg-brand-navy/5 border border-brand-navy/20 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Users className="w-4 h-4 text-brand-navy" />
@@ -274,7 +271,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               </p>
             </div>
 
-            {/* Sales Rep picker */}
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -322,7 +318,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               )}
             </div>
 
-            {/* Pickup */}
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Pickup Location</h3>
               <div className="grid grid-cols-1 gap-3">
@@ -358,7 +353,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               </div>
             </div>
 
-            {/* Delivery */}
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Delivery Location</h3>
               <div className="grid grid-cols-1 gap-3">
@@ -394,7 +388,6 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               </div>
             </div>
 
-            {/* Package */}
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Package Details</h3>
               <div className="space-y-3">
