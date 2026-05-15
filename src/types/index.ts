@@ -356,12 +356,28 @@ export type VoucherType =
 
 export type VoucherDirection = 'DEBIT' | 'CREDIT';
 export type VoucherReferenceType = 'NONE' | 'INVOICE' | 'ORDER';
+export type VoucherPaymentMethod = 'CASH' | 'CHEQUE' | 'BANK_TRANSFER' | 'CONTRA';
 
 export interface VoucherAccountRef {
   id: string;
   code: string;
   name: string;
   accountGroup?: { id: string; code: string; name: string; groupType: AccountGroupType };
+}
+
+export interface VoucherAllocation {
+  id: string;
+  voucherId: string;
+  invoiceId?: string | null;
+  jobNo?: string | null;
+  refNo?: string | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  billAmount: number;
+  allocatedAmount: number;
+  balanceAfter: number;
+  remarks?: string | null;
+  createdAt: string;
 }
 
 export interface Voucher {
@@ -377,15 +393,31 @@ export interface Voucher {
   orderId?: string | null;
   accountId?: string | null;
   contraAccountId?: string | null;
+  collectedRepId?: string | null;
   partyName?: string | null;
+  issuedTo?: string | null;
   narration?: string | null;
+
+  // Payment-method / cheque metadata (Supplier Payment Voucher)
+  paymentMethod?: VoucherPaymentMethod | null;
+  chequeNumber?: string | null;
+  chequeDate?: string | null;
+  presentOn?: string | null;
+  clearedOn?: string | null;
+  accountPayee?: boolean;
+  printCheque?: boolean;
+  againstType?: string | null;
+
+  // Attachment
   fileUrl?: string | null;
   fileName?: string | null;
   fileMimeType?: string | null;
   fileSize?: number | null;
+
   userId: string;
   createdAt: string;
   updatedAt: string;
+
   invoice?: {
     id: string;
     invoiceNumber: string;
@@ -400,6 +432,8 @@ export interface Voucher {
   } | null;
   account?: VoucherAccountRef | null;
   contraAccount?: VoucherAccountRef | null;
+  collectedRep?: Pick<Salesperson, 'id' | 'code' | 'name' | 'phone' | 'email'> | null;
+  allocations?: VoucherAllocation[];
   user?: Partial<User>;
 }
 
