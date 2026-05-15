@@ -11,7 +11,7 @@ import { formatDate, formatDateTime } from '@/lib/utils';
 import { Shipment, ShipmentEvent } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  ArrowLeft, MapPin, Package, Truck, Calendar, User, Trash2, Pencil,
+  ArrowLeft, MapPin, Package, Truck, Calendar, Trash2,
   RefreshCw, Loader2, AlertCircle, FileText, ExternalLink,
 } from 'lucide-react';
 
@@ -264,6 +264,3 @@ function Field({ label, value, icon: Icon }: { label: string; value: string; ico
     </div>
   );
 }
-
-// User type fallback if @/types doesn't expose `user` on Shipment
-void User;
