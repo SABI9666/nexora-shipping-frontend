@@ -6,7 +6,12 @@ import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText } from
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { Voucher, VoucherType, Account, Salesperson, BankAccount } from '@/types';
-import { VOUCHER_TYPE_LABEL, PAYMENT_METHOD_LABEL, VoucherPaymentMethod } from './constants';
+import {
+  VOUCHER_TYPE_LABEL,
+  PAYMENT_METHOD_LABEL,
+  VoucherPaymentMethod,
+  VOUCHER_FORM_COPY,
+} from './constants';
 
 interface Props {
   type: VoucherType;
@@ -74,6 +79,8 @@ function searchBanks(banks: BankAccount[], q: string, limit = 30): BankAccount[]
 }
 
 export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props) {
+  const copy = VOUCHER_FORM_COPY[type];
+
   const [voucherDate, setVoucherDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>('CASH');
   const [accountId, setAccountId] = useState('');
@@ -233,10 +240,10 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!accountId) { setError('Select a party / supplier.'); return; }
+    if (!accountId) { setError('Select a party.'); return; }
     const selectedRows = allocations.filter((r) => r.selected && (r.allocatedAmount !== 0 || r.billAmount !== 0));
     const amount = selectedRows.reduce((s, r) => s + (r.allocatedAmount || 0), 0);
-    if (amount <= 0) { setError('Allocate at least one bill (received amount must be positive).'); return; }
+    if (amount <= 0) { setError('Allocate at least one bill (amount must be positive).'); return; }
 
     setSubmitting(true);
     try {
@@ -296,7 +303,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900">{VOUCHER_TYPE_LABEL[type]}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Select a supplier, pick the bank account, then tick the bills you&apos;re paying.</p>
+            <p className="text-xs text-slate-400 mt-0.5">{copy.subtitle}</p>
           </div>
           <button type="button" onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
@@ -377,7 +384,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input value={partySearch} onChange={(e) => setPartySearch(e.target.value)}
-                  placeholder={selectedAccount ? `${selectedAccount.code} · ${selectedAccount.name}` : 'Search supplier / customer / any account from master…'}
+                  placeholder={selectedAccount ? `${selectedAccount.code} · ${selectedAccount.name}` : copy.partySearchPlaceholder}
                   className={`${inputCls} pl-8`} />
               </div>
               {partySearch && (
@@ -538,7 +545,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                     <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">Inv. No.</th>
                     <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">Date</th>
                     <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">Amount</th>
-                    <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">Recd. Amt.</th>
+                    <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">{copy.allocColLabel}</th>
                     <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">Bal. Amt.</th>
                     <th className="px-2 py-2 w-8"></th>
                   </tr>
@@ -548,7 +555,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                     <tr><td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
                       {accountId
                         ? 'No open bills for this party. Use "Find & Add Invoice" above to add a specific invoice.'
-                        : 'Select a party to load open bills (or use "Find & Add Invoice" above).'}
+                        : `${copy.emptyHint} Or use "Find & Add Invoice" above.`}
                     </td></tr>
                   )}
                   {allocations.map((row, idx) => {
@@ -609,7 +616,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                 {allocations.length > 0 && (
                   <tfoot className="bg-brand-navy/5 border-t-2 border-brand-navy">
                     <tr>
-                      <td colSpan={6} className="px-3 py-2 text-right text-xs font-bold text-brand-navy uppercase">Total Paid</td>
+                      <td colSpan={6} className="px-3 py-2 text-right text-xs font-bold text-brand-navy uppercase">{copy.totalLabel}</td>
                       <td className="px-3 py-2 text-right text-sm font-bold text-brand-navy">
                         {currency} {totalAllocated.toFixed(2)}
                       </td>
@@ -638,7 +645,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
             <button type="submit" disabled={submitting || !accountId || totalAllocated <= 0}
               className="flex items-center gap-2 px-5 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              Save Voucher
+              {copy.saveCta}
             </button>
           </div>
         </div>
