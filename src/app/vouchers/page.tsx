@@ -4,42 +4,24 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
+import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, VoucherType, VoucherDirection } from '@/types';
 import {
   Plus, BookOpen, Trash2, Search, Paperclip, ArrowUpRight, ArrowDownRight,
+  Printer, Loader2, ChevronDown,
 } from 'lucide-react';
 import { CreateVoucherModal } from './CreateVoucherModal';
-
-export const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
-  CASH: 'Cash Voucher',
-  PURCHASE: 'Purchase Voucher',
-  PAYMENT: 'Payment Voucher',
-  BANK: 'Bank Voucher',
-  JOURNAL: 'Journal Voucher',
-  RECEIPT: 'Customer Receipt',
-  SUPPLIER_PAYMENT: 'Supplier Payment',
-  CREDIT_NOTE: 'Credit Note',
-  DEBIT_NOTE: 'Debit Note',
-};
-
-export const VOUCHER_TYPE_COLOR: Record<VoucherType, string> = {
-  CASH: 'bg-amber-50 text-amber-700',
-  PURCHASE: 'bg-purple-50 text-purple-700',
-  PAYMENT: 'bg-rose-50 text-rose-700',
-  BANK: 'bg-sky-50 text-sky-700',
-  JOURNAL: 'bg-slate-100 text-slate-700',
-  RECEIPT: 'bg-emerald-50 text-emerald-700',
-  SUPPLIER_PAYMENT: 'bg-orange-50 text-orange-700',
-  CREDIT_NOTE: 'bg-teal-50 text-teal-700',
-  DEBIT_NOTE: 'bg-red-50 text-red-700',
-};
+import { SupplierPaymentVoucherModal } from './SupplierPaymentVoucherModal';
+import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, VOUCHER_USES_PAYMENT_FORM } from './constants';
 
 export default function VouchersPage() {
   const queryClient = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [activeType, setActiveType] = useState<VoucherType | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<VoucherType | ''>('');
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vouchers', typeFilter, search],
@@ -58,6 +40,17 @@ export default function VouchersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vouchers'] }),
   });
 
+  const handlePrint = async (v: Voucher) => {
+    setPrintingId(v.id);
+    try {
+      await downloadDocx(`/vouchers/${v.id}/download/pdf`, `${v.voucherNumber}.pdf`);
+    } catch {
+      alert('Failed to download voucher PDF.');
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
   const directionBadge = (dir: VoucherDirection) =>
     dir === 'CREDIT' ? (
       <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
@@ -69,36 +62,53 @@ export default function VouchersPage() {
       </span>
     );
 
+  const openCreate = (t: VoucherType) => {
+    setActiveType(t);
+    setShowTypeMenu(false);
+  };
+
   return (
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Vouchers</h1>
-          <p className="text-sm text-slate-500">All voucher types in one place — cash, bank, journal, credit/debit notes, receipts &amp; payments</p>
+          <p className="text-sm text-slate-500">Cash, bank, journal, receipts, payments, credit / debit notes — each ledger-ready and printable.</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Voucher
-        </button>
+        <div className="relative">
+          <button onClick={() => setShowTypeMenu((v) => !v)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 transition-colors">
+            <Plus className="w-4 h-4" /> New Voucher <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+          {showTypeMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowTypeMenu(false)} />
+              <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 max-h-96 overflow-y-auto">
+                {(Object.keys(VOUCHER_TYPE_LABEL) as VoucherType[]).map((t) => (
+                  <button key={t} onClick={() => openCreate(t)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50">
+                    <span className="text-slate-700">{VOUCHER_TYPE_LABEL[t]}</span>
+                    {VOUCHER_USES_PAYMENT_FORM[t] && (
+                      <span className="text-[10px] font-semibold text-brand-navy bg-brand-navy/10 px-1.5 py-0.5 rounded-full">
+                        Bill alloc
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search voucher number, party, narration…"
-            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
-          />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search voucher number, party, narration, cheque…"
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy" />
         </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as VoucherType | '')}
-          className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white"
-        >
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as VoucherType | '')}
+          className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white">
           <option value="">All Types</option>
           {(Object.keys(VOUCHER_TYPE_LABEL) as VoucherType[]).map((t) => (
             <option key={t} value={t}>{VOUCHER_TYPE_LABEL[t]}</option>
@@ -109,7 +119,7 @@ export default function VouchersPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-brand-navy border-t-transparent rounded-full animate-spin" />
+            <Loader2 className="w-6 h-6 animate-spin text-brand-navy" />
           </div>
         ) : vouchers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -143,7 +153,11 @@ export default function VouchersPage() {
                     </td>
                     <td className="px-4 py-3.5 text-slate-500 hidden sm:table-cell">{formatDate(v.voucherDate)}</td>
                     <td className="px-4 py-3.5 hidden md:table-cell">
-                      {v.invoice ? (
+                      {v.chequeNumber ? (
+                        <span className="text-xs font-mono bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+                          CHQ · {v.chequeNumber}
+                        </span>
+                      ) : v.invoice ? (
                         <span className="text-xs font-mono bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
                           INV · {v.invoice.invoiceNumber}
                         </span>
@@ -156,7 +170,16 @@ export default function VouchersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3.5 hidden lg:table-cell">
-                      <span className="text-slate-700">{v.partyName || v.invoice?.billToName || '—'}</span>
+                      {v.account ? (
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-800 truncate max-w-[200px]">{v.account.code} · {v.account.name}</div>
+                          {v.account.accountGroup?.name && (
+                            <div className="text-[11px] text-slate-400 truncate max-w-[200px]">{v.account.accountGroup.name}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-700">{v.partyName || v.issuedTo || v.invoice?.billToName || '—'}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-right font-bold text-slate-900">
                       {formatCurrency(v.amount, v.currency)}
@@ -164,23 +187,22 @@ export default function VouchersPage() {
                     <td className="px-4 py-3.5 text-center">{directionBadge(v.direction)}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => handlePrint(v)} disabled={printingId === v.id}
+                          className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                          title="Print / Share PDF">
+                          {printingId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                        </button>
                         {v.fileUrl && (
-                          <a
-                            href={v.fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
+                          <a href={v.fileUrl} target="_blank" rel="noreferrer"
                             className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
-                            title={v.fileName || 'Attachment'}
-                          >
+                            title={v.fileName || 'Attachment'}>
                             <Paperclip className="w-4 h-4" />
                           </a>
                         )}
-                        <button
-                          onClick={() => { if (confirm(`Delete voucher ${v.voucherNumber}?`)) deleteMutation.mutate(v.id); }}
+                        <button onClick={() => { if (confirm(`Delete voucher ${v.voucherNumber}?`)) deleteMutation.mutate(v.id); }}
                           disabled={deleteMutation.isPending}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Delete"
-                        >
+                          title="Delete">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -193,11 +215,13 @@ export default function VouchersPage() {
         )}
       </div>
 
-      {showCreate && (
-        <CreateVoucherModal
-          onClose={() => setShowCreate(false)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['vouchers'] })}
-        />
+      {activeType && (VOUCHER_USES_PAYMENT_FORM[activeType]
+        ? <SupplierPaymentVoucherModal type={activeType}
+            onClose={() => setActiveType(null)}
+            onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['vouchers'] }); setActiveType(null); }} />
+        : <CreateVoucherModal
+            onClose={() => setActiveType(null)}
+            onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['vouchers'] }); setActiveType(null); }} />
       )}
     </DashboardLayout>
   );
