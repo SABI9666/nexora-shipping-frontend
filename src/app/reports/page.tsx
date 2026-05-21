@@ -6,7 +6,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
-  Receipt, Package, BookOpen, AlertCircle, FileSpreadsheet, ChevronRight,
+  Receipt, Package, BookOpen, AlertCircle, FileSpreadsheet, FileText, ChevronRight,
 } from 'lucide-react';
 
 interface DashboardSnapshot {
@@ -50,6 +50,13 @@ const REPORTS = [
     desc: 'Customer / supplier ledger — chronological Dr/Cr movement with running balance.',
     icon: FileSpreadsheet,
     color: 'bg-purple-50 text-purple-700 border-purple-200',
+  },
+  {
+    key: 'customer-statement',
+    title: 'Customer Statement (SOA)',
+    desc: 'Per-customer outstanding statement with aging days and cumulative balance — print and send.',
+    icon: FileText,
+    color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   },
 ];
 
