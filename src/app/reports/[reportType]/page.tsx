@@ -6,10 +6,11 @@ import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
+import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, Account } from '@/types';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR } from '@/app/vouchers/constants';
-import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Loader2 } from 'lucide-react';
 
 const REPORT_META: Record<string, { title: string; desc: string }> = {
   'sales-summary': { title: 'Sales Summary', desc: 'Invoices issued, paid and outstanding for the period.' },
@@ -17,6 +18,7 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'voucher-register': { title: 'Voucher Register', desc: 'All vouchers in the period with totals by type.' },
   'outstanding-receivables': { title: 'Outstanding Receivables', desc: 'Open invoices with voucher-adjusted outstanding.' },
   'account-statement': { title: 'Account Statement', desc: 'Per-account ledger — chronological Dr/Cr.' },
+  'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days and cumulative balance.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -58,8 +60,9 @@ export default function ReportDetailPage() {
   const [voucherType, setVoucherType] = useState('');
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState(initialRange.to);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  const needsAccount = reportType === 'account-statement';
+  const needsAccount = reportType === 'account-statement' || reportType === 'customer-statement';
   const { data: accountList } = useQuery({
     queryKey: ['report-accounts'],
     queryFn: () => api.get('/accounts?limit=1000').then((r) => r.data).catch(() => ({ data: [] })),
@@ -72,7 +75,7 @@ export default function ReportDetailPage() {
     enabled: !needsAccount || !!accountId,
     queryFn: () => {
       const params = new URLSearchParams();
-      if (reportType === 'outstanding-receivables') {
+      if (reportType === 'outstanding-receivables' || reportType === 'customer-statement') {
         params.set('asOf', asOf);
       } else {
         if (from) params.set('from', from);
@@ -82,12 +85,30 @@ export default function ReportDetailPage() {
         if (voucherType) params.set('type', voucherType);
         if (accountId) params.set('accountId', accountId);
       }
-      if (reportType === 'account-statement') {
+      if (reportType === 'account-statement' || reportType === 'customer-statement') {
         params.set('accountId', accountId);
       }
       return api.get(`/reports/${reportType}?${params}`).then((r) => r.data.data);
     },
   });
+
+  const handlePdfDownload = async () => {
+    if (!accountId) return;
+    setDownloadingPdf(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('accountId', accountId);
+      if (asOf) params.set('asOf', asOf);
+      const customerName = accounts.find((a) => a.id === accountId)?.name || 'CUSTOMER';
+      const safe = customerName.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
+      const stamp = asOf.replace(/-/g, '');
+      await downloadDocx(`/reports/customer-statement/pdf?${params}`, `SOA_${safe}_${stamp}.pdf`);
+    } catch {
+      alert('Failed to download SOA PDF.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const handleExport = () => {
     if (!data) return;
@@ -135,6 +156,12 @@ export default function ReportDetailPage() {
         r.narration ?? '', r.currency, r.debit, r.credit, `${r.runningBalance} ${r.runningSide}`,
       ]);
       downloadCsv(`statement-${data.account?.code || 'account'}.csv`, toCsv(headers, rows));
+    } else if (reportType === 'customer-statement') {
+      const headers = ['Sl No', 'Invoice No', 'Date', 'Days', 'Balance Amount', 'Cum. Balance'];
+      const rows = (data.rows || []).map((r: { invoiceNumber: string; invoiceDate: string; days: number; balance: number; cumBalance: number }, idx: number) => [
+        idx + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10), r.days, r.balance, r.cumBalance,
+      ]);
+      downloadCsv(`SOA-${data.account?.code || 'customer'}-${asOf}.csv`, toCsv(headers, rows));
     }
   };
 
@@ -148,18 +175,30 @@ export default function ReportDetailPage() {
           <h1 className="text-2xl font-bold text-slate-900">{meta.title}</h1>
           <p className="text-sm text-slate-500">{meta.desc}</p>
         </div>
-        <button
-          onClick={handleExport}
-          disabled={!data}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" /> Export CSV
-        </button>
+        <div className="flex items-center gap-2">
+          {reportType === 'customer-statement' && (
+            <button
+              onClick={handlePdfDownload}
+              disabled={!data || !accountId || downloadingPdf}
+              className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            >
+              {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              Print PDF
+            </button>
+          )}
+          <button
+            onClick={handleExport}
+            disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3 mb-5 bg-white border border-slate-200 rounded-xl p-4">
-        {reportType === 'outstanding-receivables' ? (
+        {reportType === 'outstanding-receivables' || reportType === 'customer-statement' ? (
           <div>
             <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">As of</label>
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
@@ -203,12 +242,14 @@ export default function ReportDetailPage() {
             </div>
           </>
         )}
-        {reportType === 'account-statement' && (
+        {(reportType === 'account-statement' || reportType === 'customer-statement') && (
           <div className="min-w-[300px] flex-1">
-            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Account</label>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">
+              {reportType === 'customer-statement' ? 'Customer' : 'Account'}
+            </label>
             <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-              <option value="">Select an account…</option>
+              <option value="">Select {reportType === 'customer-statement' ? 'a customer' : 'an account'}…</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.code} · {a.name}{a.accountGroup ? ` · ${a.accountGroup.name}` : ''}</option>
               ))}
@@ -238,9 +279,12 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'voucher-register' && <VoucherRegisterView data={data} />}
       {!isLoading && data && reportType === 'outstanding-receivables' && <OutstandingView data={data} />}
       {!isLoading && data && reportType === 'account-statement' && <StatementView data={data} />}
+      {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
 
       {!isLoading && !data && needsAccount && !accountId && (
-        <div className="text-center py-12 text-slate-400 text-sm">Pick an account to view its statement.</div>
+        <div className="text-center py-12 text-slate-400 text-sm">
+          Pick {reportType === 'customer-statement' ? 'a customer' : 'an account'} to view {reportType === 'customer-statement' ? 'their outstanding statement' : 'its statement'}.
+        </div>
       )}
     </DashboardLayout>
   );
@@ -575,6 +619,98 @@ function StatementView({ data }: { data: StatementData }) {
   );
 }
 
+// ── Customer Statement (SOA) view ───────────────────────────────────────────
+interface CustomerStatementData {
+  account: {
+    code: string;
+    name: string;
+    accountGroup?: { name: string; groupType: string } | null;
+    phone1?: string | null;
+    mobile1?: string | null;
+    mobile2?: string | null;
+    trn?: string | null;
+    email?: string | null;
+    address?: string | null;
+  };
+  asOf: string;
+  currency: string;
+  totals: { invoiceCount: number; totalOutstanding: number };
+  rows: { id: string; invoiceNumber: string; invoiceDate: string; currency: string; days: number; balance: number; cumBalance: number }[];
+}
+function CustomerStatementView({ data }: { data: CustomerStatementData }) {
+  return (
+    <>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Customer Outstanding Statement as of {formatDate(data.asOf)}
+            </p>
+            <p className="text-lg font-bold text-slate-900 mt-1">{data.account.name}</p>
+            <p className="text-xs text-slate-500">
+              {data.account.code}
+              {data.account.trn ? `  ·  TRN ${data.account.trn}` : ''}
+              {data.account.accountGroup ? `  ·  ${data.account.accountGroup.name}` : ''}
+            </p>
+          </div>
+          <div className="text-right text-sm text-slate-600 space-y-0.5">
+            <p>Phone : <span className="font-medium">{data.account.phone1 || '—'}</span></p>
+            <p>Mobile : <span className="font-medium">{data.account.mobile1 || data.account.mobile2 || '—'}</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <StatCard label="Open invoices" value={String(data.totals.invoiceCount)} />
+        <StatCard label="Total outstanding" value={formatCurrency(data.totals.totalOutstanding, data.currency)} />
+        <StatCard label="As of" value={formatDate(data.asOf)} />
+      </div>
+
+      <Panel title={`Outstanding invoices (${data.rows.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th align="center">Sl No</Th>
+                <Th>Invoice No</Th>
+                <Th>Date</Th>
+                <Th align="center">Days</Th>
+                <Th align="right">Balance Amount</Th>
+                <Th align="right">Cum. Balance</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.rows.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No outstanding invoices.</td></tr>
+              )}
+              {data.rows.map((r, idx) => (
+                <tr key={r.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 text-center text-slate-500">{idx + 1}</td>
+                  <td className="px-4 py-2 font-mono text-brand-navy">{r.invoiceNumber}</td>
+                  <td className="px-4 py-2 text-slate-500">{formatDate(r.invoiceDate)}</td>
+                  <td className="px-4 py-2 text-center text-slate-700">{r.days}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(r.balance, r.currency)}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-brand-navy">{formatCurrency(r.cumBalance, r.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {data.rows.length > 0 && (
+              <tfoot className="bg-brand-navy/5 border-t-2 border-brand-navy">
+                <tr>
+                  <td colSpan={4} className="px-4 py-2 text-right text-xs font-bold text-brand-navy uppercase">Total Outstanding</td>
+                  <td className="px-4 py-2 text-right font-bold text-brand-navy" colSpan={2}>
+                    {formatCurrency(data.totals.totalOutstanding, data.currency)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
 // ── Small reusable bits ────────────────────────────────────────────────────────────────────────
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -587,7 +723,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' }) {
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
   return (
     <th className={`px-4 py-2.5 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider`}>
       {children}
