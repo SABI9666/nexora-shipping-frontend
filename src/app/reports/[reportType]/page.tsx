@@ -9,7 +9,7 @@ import api from '@/lib/api';
 import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, Account } from '@/types';
-import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR } from '@/app/vouchers/constants';
+import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, PAYMENT_METHOD_LABEL } from '@/app/vouchers/constants';
 import { ArrowLeft, Download, FileText, Loader2 } from 'lucide-react';
 
 const REPORT_META: Record<string, { title: string; desc: string }> = {
@@ -18,7 +18,7 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'voucher-register': { title: 'Voucher Register', desc: 'All vouchers in the period with totals by type.' },
   'outstanding-receivables': { title: 'Outstanding Receivables', desc: 'Open invoices with voucher-adjusted outstanding.' },
   'account-statement': { title: 'Account Statement', desc: 'Per-account ledger — chronological Dr/Cr.' },
-  'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days and cumulative balance.' },
+  'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days, cumulative balance, and receipts / allocations.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -620,6 +620,22 @@ function StatementView({ data }: { data: StatementData }) {
 }
 
 // ── Customer Statement (SOA) view ───────────────────────────────────────────
+interface CustomerStatementVoucher {
+  id: string;
+  voucherNumber: string;
+  voucherDate: string;
+  type: string;
+  direction: 'DEBIT' | 'CREDIT';
+  paymentMethod: string | null;
+  chequeNumber: string | null;
+  amount: number;
+  currency: string;
+  narration: string | null;
+  invoiceNumber: string | null;
+  orderNumber: string | null;
+  allocations: { invoiceNumber: string | null; jobNo: string | null; refNo: string | null; allocatedAmount: number }[];
+}
+
 interface CustomerStatementData {
   account: {
     code: string;
@@ -634,10 +650,20 @@ interface CustomerStatementData {
   };
   asOf: string;
   currency: string;
-  totals: { invoiceCount: number; totalOutstanding: number };
+  totals: {
+    invoiceCount: number;
+    totalOutstanding: number;
+    voucherCount?: number;
+    totalReceived?: number;
+    totalDebited?: number;
+  };
   rows: { id: string; invoiceNumber: string; invoiceDate: string; currency: string; days: number; balance: number; cumBalance: number }[];
+  vouchers?: CustomerStatementVoucher[];
 }
 function CustomerStatementView({ data }: { data: CustomerStatementData }) {
+  const vouchers = data.vouchers ?? [];
+  const totalReceived = data.totals.totalReceived ?? 0;
+  const totalDebited = data.totals.totalDebited ?? 0;
   return (
     <>
       <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
@@ -660,9 +686,14 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
         <StatCard label="Open invoices" value={String(data.totals.invoiceCount)} />
         <StatCard label="Total outstanding" value={formatCurrency(data.totals.totalOutstanding, data.currency)} />
+        <StatCard
+          label="Receipts / Credits"
+          value={formatCurrency(totalReceived, data.currency)}
+          sub={`${vouchers.filter((v) => v.direction === 'CREDIT').length} voucher${vouchers.filter((v) => v.direction === 'CREDIT').length === 1 ? '' : 's'}`}
+        />
         <StatCard label="As of" value={formatDate(data.asOf)} />
       </div>
 
@@ -701,6 +732,80 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
                   <td className="px-4 py-2 text-right font-bold text-brand-navy" colSpan={2}>
                     {formatCurrency(data.totals.totalOutstanding, data.currency)}
                   </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Panel>
+
+      <div className="h-4" />
+
+      <Panel title={`Receipts & Allocations (${vouchers.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th>Date</Th>
+                <Th>Voucher #</Th>
+                <Th>Type</Th>
+                <Th>Method</Th>
+                <Th>Applied To</Th>
+                <Th>Narration</Th>
+                <Th align="right">Debit</Th>
+                <Th align="right">Credit</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {vouchers.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No voucher activity for this customer up to {formatDate(data.asOf)}.</td></tr>
+              )}
+              {vouchers.map((v) => {
+                const appliedParts: string[] = [];
+                v.allocations.forEach((a) => {
+                  if (a.invoiceNumber) {
+                    appliedParts.push(`${a.invoiceNumber} (${formatCurrency(a.allocatedAmount, v.currency)})`);
+                  } else if (a.jobNo || a.refNo) {
+                    appliedParts.push(`${a.jobNo || a.refNo} (${formatCurrency(a.allocatedAmount, v.currency)})`);
+                  }
+                });
+                const applied = appliedParts.length > 0
+                  ? appliedParts.join('; ')
+                  : (v.invoiceNumber ? `INV ${v.invoiceNumber}` : (v.orderNumber ? `ORD ${v.orderNumber}` : '—'));
+                const method = v.paymentMethod
+                  ? PAYMENT_METHOD_LABEL[v.paymentMethod as keyof typeof PAYMENT_METHOD_LABEL] || v.paymentMethod
+                  : '—';
+                return (
+                  <tr key={v.id} className="hover:bg-slate-50 align-top">
+                    <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDate(v.voucherDate)}</td>
+                    <td className="px-4 py-2 font-mono text-brand-navy whitespace-nowrap">{v.voucherNumber}</td>
+                    <td className="px-4 py-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${VOUCHER_TYPE_COLOR[v.type as keyof typeof VOUCHER_TYPE_COLOR] || 'bg-slate-100 text-slate-700'}`}>
+                        {VOUCHER_TYPE_LABEL[v.type as keyof typeof VOUCHER_TYPE_LABEL] || v.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                      {method}
+                      {v.chequeNumber ? <span className="text-xs text-slate-400 ml-1">· {v.chequeNumber}</span> : null}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-slate-700 max-w-[280px] truncate" title={applied}>{applied}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500 max-w-[200px] truncate" title={v.narration || ''}>{v.narration || '—'}</td>
+                    <td className="px-4 py-2 text-right text-rose-700">
+                      {v.direction === 'DEBIT' ? formatCurrency(v.amount, v.currency) : '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right text-emerald-700 font-semibold">
+                      {v.direction === 'CREDIT' ? formatCurrency(v.amount, v.currency) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {vouchers.length > 0 && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+                <tr>
+                  <td colSpan={6} className="px-4 py-2 text-right text-xs font-bold text-slate-600 uppercase">Total</td>
+                  <td className="px-4 py-2 text-right font-bold text-rose-700">{formatCurrency(totalDebited, data.currency)}</td>
+                  <td className="px-4 py-2 text-right font-bold text-emerald-700">{formatCurrency(totalReceived, data.currency)}</td>
                 </tr>
               </tfoot>
             )}
