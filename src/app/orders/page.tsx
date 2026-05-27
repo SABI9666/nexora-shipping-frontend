@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import api from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { Order } from '@/types';
 import { Plus, Search, Package, ChevronLeft, ChevronRight, Eye, Pencil } from 'lucide-react';
 import { NewOrderModal } from '@/components/orders/NewOrderModal';
@@ -73,7 +73,6 @@ export default function OrdersPage() {
                   <th>Route</th>
                   <th>Package</th>
                   <th>Weight</th>
-                  <th>Price</th>
                   <th>Status</th>
                   <th>Date</th>
                   <th></th>
@@ -97,7 +96,6 @@ export default function OrdersPage() {
                       <p className="text-sm truncate">{order.packageDescription}</p>
                     </td>
                     <td className="text-sm">{order.weight} kg</td>
-                    <td className="text-sm font-medium">{order.price ? formatCurrency(order.price) : '—'}</td>
                     <td><StatusBadge status={order.status} type="order" /></td>
                     <td className="text-sm text-slate-500">{formatDate(order.createdAt)}</td>
                     <td>
