@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Upload, Loader2, FileText, ArrowUpRight, ArrowDownRight, Building2, Wallet } from 'lucide-react';
 import api from '@/lib/api';
@@ -27,6 +27,7 @@ const DEFAULT_DIRECTION: Record<VoucherType, VoucherDirection> = {
 };
 
 interface Props {
+  voucher?: Voucher | null; // when set, the modal is in edit mode
   onClose: () => void;
   onSuccess: (voucher: Voucher) => void;
 }
@@ -130,24 +131,30 @@ function AccountPicker({
   );
 }
 
-export function CreateVoucherModal({ onClose, onSuccess }: Props) {
-  const [type, setType] = useState<VoucherType>('RECEIPT');
-  const [direction, setDirection] = useState<VoucherDirection>(DEFAULT_DIRECTION['RECEIPT']);
-  const [voucherDate, setVoucherDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [referenceType, setReferenceType] = useState<VoucherReferenceType>('NONE');
-  const [invoiceId, setInvoiceId] = useState('');
-  const [orderId, setOrderId] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [contraAccountId, setContraAccountId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('AED');
-  const [partyName, setPartyName] = useState('');
-  const [narration, setNarration] = useState('');
+export function CreateVoucherModal({ voucher, onClose, onSuccess }: Props) {
+  const isEdit = !!voucher;
+  const [type, setType] = useState<VoucherType>(voucher?.type ?? 'JOURNAL');
+  const [direction, setDirection] = useState<VoucherDirection>(voucher?.direction ?? DEFAULT_DIRECTION[voucher?.type ?? 'JOURNAL']);
+  const [voucherDate, setVoucherDate] = useState(() =>
+    voucher?.voucherDate ? voucher.voucherDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [referenceType, setReferenceType] = useState<VoucherReferenceType>(voucher?.referenceType ?? 'NONE');
+  const [invoiceId, setInvoiceId] = useState(voucher?.invoiceId ?? '');
+  const [orderId, setOrderId] = useState(voucher?.orderId ?? '');
+  const [accountId, setAccountId] = useState(voucher?.accountId ?? '');
+  const [contraAccountId, setContraAccountId] = useState(voucher?.contraAccountId ?? '');
+  const [amount, setAmount] = useState(voucher ? String(voucher.amount) : '');
+  const [currency, setCurrency] = useState(voucher?.currency ?? 'AED');
+  const [partyName, setPartyName] = useState(voucher?.partyName ?? '');
+  const [narration, setNarration] = useState(voucher?.narration ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync default direction when the user changes the type — but not on the
+  // initial mount, so an edited voucher keeps its saved direction.
+  const typeInitialized = useRef(false);
   useEffect(() => {
+    if (!typeInitialized.current) { typeInitialized.current = true; return; }
     setDirection(DEFAULT_DIRECTION[type]);
   }, [type]);
 
@@ -243,9 +250,9 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
       if (narration) fd.append('narration', narration);
       if (file) fd.append('file', file);
 
-      const res = await api.post('/vouchers', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = isEdit
+        ? await api.put(`/vouchers/${voucher!.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        : await api.post('/vouchers', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       onSuccess(res.data.data);
       onClose();
     } catch (err: unknown) {
@@ -268,8 +275,15 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">New Voucher</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Pick the voucher type — the party picker filters to suppliers or customers automatically.</p>
+            <h2 className="text-base font-bold text-slate-900">
+              {isEdit ? 'Edit Voucher' : 'New Voucher'}
+              {isEdit && voucher?.voucherNumber ? <span className="ml-2 text-sm font-mono text-slate-400">{voucher.voucherNumber}</span> : null}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {isEdit
+                ? 'Changes reflect in reports & ledgers on save.'
+                : 'Pick the voucher type — the party picker filters to suppliers or customers automatically.'}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
             <X className="w-4 h-4" />
@@ -495,7 +509,9 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Voucher Attachment</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">
+              Voucher Attachment {isEdit ? <span className="text-slate-400 normal-case font-normal">(upload to replace existing)</span> : null}
+            </label>
             <label className="flex items-center gap-3 px-3 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
               <Upload className="w-5 h-5 text-slate-400" />
               <div className="flex-1 min-w-0">
@@ -505,6 +521,8 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
                     <span className="truncate">{file.name}</span>
                     <span className="text-xs text-slate-400">({Math.round(file.size / 1024)} KB)</span>
                   </div>
+                ) : isEdit && voucher?.fileName ? (
+                  <span className="text-sm text-slate-500">Current: {voucher.fileName} — click to replace</span>
                 ) : (
                   <span className="text-sm text-slate-500">Click to upload PDF or image of the voucher</span>
                 )}
@@ -539,7 +557,7 @@ export function CreateVoucherModal({ onClose, onSuccess }: Props) {
             className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Save Voucher
+            {isEdit ? 'Update Voucher' : 'Save Voucher'}
           </button>
         </div>
       </form>
