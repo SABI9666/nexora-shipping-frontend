@@ -9,7 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, VoucherType, VoucherDirection } from '@/types';
 import {
   Plus, BookOpen, Trash2, Search, Paperclip, ArrowUpRight, ArrowDownRight,
-  Printer, Loader2, ChevronDown,
+  Printer, Loader2, ChevronDown, Pencil,
 } from 'lucide-react';
 import { CreateVoucherModal } from './CreateVoucherModal';
 import { SupplierPaymentVoucherModal } from './SupplierPaymentVoucherModal';
@@ -19,6 +19,7 @@ export default function VouchersPage() {
   const queryClient = useQueryClient();
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [activeType, setActiveType] = useState<VoucherType | null>(null);
+  const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<VoucherType | ''>('');
   const [printingId, setPrintingId] = useState<string | null>(null);
@@ -63,9 +64,21 @@ export default function VouchersPage() {
     );
 
   const openCreate = (t: VoucherType) => {
+    setEditingVoucher(null);
     setActiveType(t);
     setShowTypeMenu(false);
   };
+
+  const closeModal = () => { setActiveType(null); setEditingVoucher(null); };
+  const onModalSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['vouchers'] });
+    closeModal();
+  };
+
+  // The type that drives which modal/flow to show — the edited voucher's
+  // type when editing, otherwise the type chosen from the New menu.
+  const modalType: VoucherType | null = editingVoucher ? editingVoucher.type : activeType;
+  const modalOpen = modalType !== null;
 
   return (
     <DashboardLayout>
@@ -187,6 +200,11 @@ export default function VouchersPage() {
                     <td className="px-4 py-3.5 text-center">{directionBadge(v.direction)}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => { setActiveType(null); setEditingVoucher(v); }}
+                          className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
+                          title="Edit voucher">
+                          <Pencil className="w-4 h-4" />
+                        </button>
                         <button onClick={() => handlePrint(v)} disabled={printingId === v.id}
                           className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
                           title="Print / Share PDF">
@@ -215,13 +233,12 @@ export default function VouchersPage() {
         )}
       </div>
 
-      {activeType && (VOUCHER_USES_PAYMENT_FORM[activeType]
-        ? <SupplierPaymentVoucherModal type={activeType}
-            onClose={() => setActiveType(null)}
-            onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['vouchers'] }); setActiveType(null); }} />
-        : <CreateVoucherModal
-            onClose={() => setActiveType(null)}
-            onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['vouchers'] }); setActiveType(null); }} />
+      {modalOpen && (
+        VOUCHER_USES_PAYMENT_FORM[modalType]
+          ? <SupplierPaymentVoucherModal type={modalType} voucher={editingVoucher}
+              onClose={closeModal} onSuccess={onModalSuccess} />
+          : <CreateVoucherModal voucher={editingVoucher}
+              onClose={closeModal} onSuccess={onModalSuccess} />
       )}
     </DashboardLayout>
   );
