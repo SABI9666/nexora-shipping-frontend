@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText } from 'lucide-react';
 import api from '@/lib/api';
@@ -13,8 +13,16 @@ import {
   VOUCHER_FORM_COPY,
 } from './constants';
 
+// The API returns bankAccountId / bankAccount on each voucher (scalar +
+// relation) even though the shared Voucher type doesn't list them yet.
+type EditableVoucher = Voucher & {
+  bankAccountId?: string | null;
+  bankAccount?: { id: string } | null;
+};
+
 interface Props {
   type: VoucherType;
+  voucher?: EditableVoucher | null; // when set, the modal is in edit mode
   onClose: () => void;
   onSuccess: (voucher: Voucher) => void;
 }
@@ -78,25 +86,48 @@ function searchBanks(banks: BankAccount[], q: string, limit = 30): BankAccount[]
   ).slice(0, limit);
 }
 
-export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props) {
+function allocationsFromVoucher(voucher?: EditableVoucher | null): AllocationRow[] {
+  if (!voucher?.allocations?.length) return [];
+  return voucher.allocations.map((a) => ({
+    invoiceId: a.invoiceId || '',
+    jobNo: a.jobNo || '',
+    refNo: a.refNo || '',
+    invoiceNumber: a.invoiceNumber || '',
+    invoiceDate: a.invoiceDate ? a.invoiceDate.slice(0, 10) : '',
+    billAmount: a.billAmount,
+    allocatedAmount: a.allocatedAmount,
+    selected: true,
+    isCustom: !a.invoiceId,
+  }));
+}
+
+export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess }: Props) {
+  const isEdit = !!voucher;
   const copy = VOUCHER_FORM_COPY[type];
 
-  const [voucherDate, setVoucherDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>('CASH');
-  const [accountId, setAccountId] = useState('');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [collectedRepId, setCollectedRepId] = useState('');
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [chequeDate, setChequeDate] = useState('');
-  const [presentOn, setPresentOn] = useState('');
-  const [clearedOn, setClearedOn] = useState('');
-  const [accountPayee, setAccountPayee] = useState(true);
-  const [printCheque, setPrintCheque] = useState(false);
-  const [againstType, setAgainstType] = useState('Bill');
-  const [issuedTo, setIssuedTo] = useState('');
-  const [narration, setNarration] = useState('');
-  const [currency, setCurrency] = useState('AED');
-  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+  const [voucherDate, setVoucherDate] = useState(() =>
+    voucher?.voucherDate ? voucher.voucherDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>(
+    (voucher?.paymentMethod as VoucherPaymentMethod) || 'CASH');
+  const [accountId, setAccountId] = useState(voucher?.accountId || '');
+  const [bankAccountId, setBankAccountId] = useState(voucher?.bankAccountId || voucher?.bankAccount?.id || '');
+  const [collectedRepId, setCollectedRepId] = useState(voucher?.collectedRepId || '');
+  const [chequeNumber, setChequeNumber] = useState(voucher?.chequeNumber || '');
+  const [chequeDate, setChequeDate] = useState(voucher?.chequeDate ? voucher.chequeDate.slice(0, 10) : '');
+  const [presentOn, setPresentOn] = useState(voucher?.presentOn ? voucher.presentOn.slice(0, 10) : '');
+  const [clearedOn, setClearedOn] = useState(voucher?.clearedOn ? voucher.clearedOn.slice(0, 10) : '');
+  const [accountPayee, setAccountPayee] = useState(voucher ? !!voucher.accountPayee : true);
+  const [printCheque, setPrintCheque] = useState(!!voucher?.printCheque);
+  const [againstType, setAgainstType] = useState(voucher?.againstType || 'Bill');
+  const [issuedTo, setIssuedTo] = useState(voucher?.issuedTo || '');
+  const [narration, setNarration] = useState(voucher?.narration || '');
+  const [currency, setCurrency] = useState(voucher?.currency || 'AED');
+  const [allocations, setAllocations] = useState<AllocationRow[]>(() => allocationsFromVoucher(voucher));
+
+  // While editing, keep the saved allocations as long as the party hasn't
+  // been changed away from the original. Loading open-bills for the same
+  // party would otherwise wipe the user's saved lines.
+  const editAccountRef = useRef<string | null>(voucher?.accountId || null);
 
   const [partySearch, setPartySearch] = useState('');
   const [bankSearch, setBankSearch] = useState('');
@@ -151,6 +182,8 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
 
   useEffect(() => {
     if (!accountId) { setAllocations([]); return; }
+    // Editing the original party — keep the saved allocations.
+    if (isEdit && accountId === editAccountRef.current) return;
     setAllocations(openBills.map((b) => ({
       invoiceId: b.id,
       jobNo: b.jobNo || '',
@@ -163,7 +196,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
       isCustom: false,
     })));
     if (openBills.length > 0 && openBills[0].currency) setCurrency(openBills[0].currency);
-  }, [accountId, openBills]);
+  }, [accountId, openBills, isEdit]);
 
   useEffect(() => {
     if (!accountId) return;
@@ -278,7 +311,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         })),
       };
 
-      const res = await api.post('/vouchers', payload);
+      const res = isEdit
+        ? await api.put(`/vouchers/${voucher!.id}`, payload)
+        : await api.post('/vouchers', payload);
       onSuccess(res.data.data);
       onClose();
     } catch (err: unknown) {
@@ -302,7 +337,10 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">{VOUCHER_TYPE_LABEL[type]}</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              {isEdit ? `Edit ${VOUCHER_TYPE_LABEL[type]}` : VOUCHER_TYPE_LABEL[type]}
+              {isEdit && voucher?.voucherNumber ? <span className="ml-2 text-sm font-mono text-slate-400">{voucher.voucherNumber}</span> : null}
+            </h2>
             <p className="text-xs text-slate-400 mt-0.5">{copy.subtitle}</p>
           </div>
           <button type="button" onClick={onClose}
@@ -636,7 +674,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">Voucher number auto-generated on save</div>
+          <div className="text-xs text-slate-500">
+            {isEdit ? 'Editing — changes reflect in reports & SOA on save' : 'Voucher number auto-generated on save'}
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
@@ -645,7 +685,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
             <button type="submit" disabled={submitting || !accountId || totalAllocated <= 0}
               className="flex items-center gap-2 px-5 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              {copy.saveCta}
+              {isEdit ? 'Update Voucher' : copy.saveCta}
             </button>
           </div>
         </div>
