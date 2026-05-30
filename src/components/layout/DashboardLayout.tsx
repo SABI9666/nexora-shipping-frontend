@@ -14,7 +14,7 @@ interface DashboardLayoutProps {
 // Auto-logout after this many minutes of no user activity. Activity = any
 // mouse / keyboard / touch / scroll event on the window. The check runs every
 // 30 seconds so a stale tab gets caught within ~30s of the deadline.
-const INACTIVITY_LOGOUT_MINUTES = 5;
+const INACTIVITY_LOGOUT_MINUTES = 10;
 
 export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { user, loading, logout, isAdmin } = useAuth();
