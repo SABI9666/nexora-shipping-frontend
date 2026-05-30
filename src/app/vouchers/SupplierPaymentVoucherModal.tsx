@@ -231,6 +231,25 @@ export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess 
       ? { ...r, allocatedAmount: value, selected: value !== 0 || r.selected }
       : r));
   };
+  // "Auto-mark all bills" — tick every row and allocate its full balance.
+  // Matches the "Auto Mark Invs" checkbox in the legacy receipt-voucher
+  // screen. Custom (advance) rows with no balance get selected but their
+  // typed amount is preserved.
+  const autoMarkAll = () => {
+    setAllocations((rows) => rows.map((r) => ({
+      ...r,
+      selected: true,
+      allocatedAmount: r.billAmount !== 0 ? r.billAmount : r.allocatedAmount,
+    })));
+  };
+  // Symmetric "Clear" — untick every row and zero its allocation.
+  const clearAllAllocations = () => {
+    setAllocations((rows) => rows.map((r) => ({
+      ...r,
+      selected: false,
+      allocatedAmount: 0,
+    })));
+  };
   const addCustomRow = () => {
     setAllocations((rows) => [
       ...rows,
@@ -565,13 +584,25 @@ export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess 
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Bill Allocation {accountId ? `· ${allocations.length} loaded` : ''}
                 {billsLoading && <Loader2 className="w-3 h-3 animate-spin inline-block ml-1" />}
               </p>
-              <button type="button" onClick={addCustomRow}
-                className="text-xs font-semibold text-brand-navy hover:underline">+ Add advance / manual line</button>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <button type="button" onClick={autoMarkAll}
+                  disabled={allocations.length === 0}
+                  className="text-emerald-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                  ✓ Auto-mark all
+                </button>
+                <button type="button" onClick={clearAllAllocations}
+                  disabled={allocations.length === 0}
+                  className="text-slate-500 hover:text-rose-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                  Clear
+                </button>
+                <button type="button" onClick={addCustomRow}
+                  className="text-brand-navy hover:underline">+ Add advance / manual line</button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
