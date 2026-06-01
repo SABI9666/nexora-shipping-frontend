@@ -20,6 +20,7 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'account-statement': { title: 'Account Statement', desc: 'Per-account ledger — chronological Dr/Cr.' },
   'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days, cumulative balance, and receipts / allocations.' },
   'job-profit': { title: 'Job Profit Statement', desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.' },
+  'outstanding-payables': { title: 'Outstanding Payables', desc: 'Money you owe suppliers — purchase vouchers minus payments per supplier.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -101,7 +102,11 @@ export default function ReportDetailPage() {
     enabled: (!needsAccount || !!accountId) && (!needsOrder || !!orderId),
     queryFn: () => {
       const params = new URLSearchParams();
-      if (reportType === 'outstanding-receivables' || reportType === 'customer-statement') {
+      if (
+        reportType === 'outstanding-receivables' ||
+        reportType === 'outstanding-payables' ||
+        reportType === 'customer-statement'
+      ) {
         params.set('asOf', asOf);
       } else if (reportType !== 'job-profit') {
         if (from) params.set('from', from);
@@ -195,6 +200,13 @@ export default function ReportDetailPage() {
         r.total, r.paid, r.adjustments, r.outstanding, r.daysOverdue,
       ]);
       downloadCsv(`outstanding-${asOf}.csv`, toCsv(headers, rows));
+    } else if (reportType === 'outstanding-payables') {
+      const headers = ['Code', 'Supplier', 'TRN', 'Group', 'Currency', 'Purchases', 'Paid', 'Adjustments', 'Outstanding'];
+      const rows = (data.rows || []).map((r: { code: string; name: string; trn: string | null; accountGroup: string | null; currency: string; totalPurchase: number; totalPaid: number; adjustments: number; outstanding: number }) => [
+        r.code, r.name, r.trn ?? '', r.accountGroup ?? '', r.currency,
+        r.totalPurchase, r.totalPaid, r.adjustments, r.outstanding,
+      ]);
+      downloadCsv(`outstanding-payables-${asOf}.csv`, toCsv(headers, rows));
     } else if (reportType === 'account-statement') {
       const headers = ['Date', 'Voucher #', 'Type', 'Reference', 'Narration', 'Currency', 'Debit', 'Credit', 'Balance'];
       const rows = (data.rows || []).map((r: { date: string; voucherNumber: string; type: string; reference: string | null; narration: string | null; currency: string; debit: number; credit: number; runningBalance: number; runningSide: string }) => [
@@ -269,7 +281,7 @@ export default function ReportDetailPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3 mb-5 bg-white border border-slate-200 rounded-xl p-4">
-        {reportType === 'outstanding-receivables' || reportType === 'customer-statement' ? (
+        {reportType === 'outstanding-receivables' || reportType === 'outstanding-payables' || reportType === 'customer-statement' ? (
           <div>
             <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">As of</label>
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
@@ -393,6 +405,7 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'orders-summary' && <OrdersSummaryView data={data} />}
       {!isLoading && data && reportType === 'voucher-register' && <VoucherRegisterView data={data} />}
       {!isLoading && data && reportType === 'outstanding-receivables' && <OutstandingView data={data} />}
+      {!isLoading && data && reportType === 'outstanding-payables' && <OutstandingPayablesView data={data} />}
       {!isLoading && data && reportType === 'account-statement' && <StatementView data={data} />}
       {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
       {!isLoading && data && reportType === 'job-profit' && <JobProfitView data={data} />}
@@ -658,6 +671,85 @@ function OutstandingView({ data }: { data: OutstandingData }) {
                 </tr>
               ))}
             </tbody>
+          </table>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+// ── Outstanding Payables (supplier-side) view ────────────────────────────────
+interface OutstandingPayablesData {
+  asOf: string;
+  totals: { supplierCount: number; totalOutstanding: number };
+  byCurrency: { currency: string; count: number; outstanding: number }[];
+  rows: { accountId: string; code: string; name: string; trn: string | null; mobile: string | null; email: string | null; accountGroup: string | null; currency: string; totalPurchase: number; totalPaid: number; adjustments: number; outstanding: number }[];
+}
+function OutstandingPayablesView({ data }: { data: OutstandingPayablesData }) {
+  const grandPurchase = data.rows.reduce((s, r) => s + r.totalPurchase, 0);
+  const grandPaid = data.rows.reduce((s, r) => s + r.totalPaid, 0);
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Suppliers with balance" value={String(data.totals.supplierCount)} sub={`as of ${formatDate(data.asOf)}`} />
+        <StatCard label="Total purchased" value={formatCurrency(grandPurchase)} />
+        <StatCard label="Total paid" value={formatCurrency(grandPaid)} />
+        <StatCard label="Outstanding to suppliers" value={formatCurrency(data.totals.totalOutstanding)} accent="rose" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-5">
+        <Panel title="By Currency">
+          <BreakdownTable rows={data.byCurrency.map((c) => ({ label: c.currency, count: c.count, amount: c.outstanding }))} />
+        </Panel>
+      </div>
+
+      <Panel title={`Suppliers with outstanding balance (${data.rows.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th>Code</Th>
+                <Th>Supplier</Th>
+                <Th>Group</Th>
+                <Th align="right">Purchases</Th>
+                <Th align="right">Paid</Th>
+                <Th align="right">Adjustments</Th>
+                <Th align="right">Outstanding</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.rows.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No outstanding supplier balances as of {formatDate(data.asOf)}.</td></tr>
+              )}
+              {data.rows.map((r) => (
+                <tr key={r.accountId} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 font-mono text-brand-navy text-xs">{r.code}</td>
+                  <td className="px-4 py-2">
+                    <div className="font-semibold text-slate-800">{r.name}</div>
+                    {(r.trn || r.mobile) && (
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {r.trn ? `TRN ${r.trn}` : ''}
+                        {r.trn && r.mobile ? '  ·  ' : ''}
+                        {r.mobile || ''}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{r.accountGroup || '—'}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(r.totalPurchase, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.totalPaid, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-slate-500">{r.adjustments > 0 ? formatCurrency(r.adjustments, r.currency) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-bold text-rose-700">{formatCurrency(r.outstanding, r.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {data.rows.length > 0 && (
+              <tfoot className="bg-rose-50/50 border-t-2 border-rose-300">
+                <tr>
+                  <td colSpan={6} className="px-4 py-2 text-right text-xs font-bold text-rose-700 uppercase">Total Outstanding</td>
+                  <td className="px-4 py-2 text-right font-bold text-rose-700">{formatCurrency(data.totals.totalOutstanding)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </Panel>
