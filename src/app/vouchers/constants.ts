@@ -2,12 +2,12 @@ import { AccountGroupType, VoucherType } from '@/types';
 
 export const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
   CASH: 'Cash Voucher',
-  PURCHASE: 'Purchase Entry',
+  PURCHASE: 'Purchase Voucher',
   PAYMENT: 'Payment Voucher',
   BANK: 'Bank Voucher',
   JOURNAL: 'Journal Voucher',
   RECEIPT: 'Receipt Voucher',
-  SUPPLIER_PAYMENT: 'Purchase Voucher',
+  SUPPLIER_PAYMENT: 'Supplier Payment',
   CREDIT_NOTE: 'Credit Voucher',
   DEBIT_NOTE: 'Debit Note',
 };
@@ -62,7 +62,7 @@ export const VOUCHER_CONTRA_FILTER: Record<VoucherType, AccountGroupType[] | nul
 
 export const VOUCHER_SHOWS_CONTRA: Record<VoucherType, boolean> = {
   CASH: true,
-  PURCHASE: true,
+  PURCHASE: false,
   PAYMENT: true,
   BANK: true,
   JOURNAL: true,
@@ -74,10 +74,12 @@ export const VOUCHER_SHOWS_CONTRA: Record<VoucherType, boolean> = {
 
 // Voucher types that open the bill-allocation modal (party search +
 // bank picker + invoice allocation table + dedicated PDF layout).
-// Receipt and Credit vouchers reuse the same flow as Purchase Voucher.
+// Receipt and Credit vouchers reuse the same flow as Supplier Payment.
+// PURCHASE is intentionally false — it uses the simple PurchaseVoucherModal
+// for recording supplier bills against a Job.
 export const VOUCHER_USES_PAYMENT_FORM: Record<VoucherType, boolean> = {
   CASH: false,
-  PURCHASE: true,
+  PURCHASE: false,
   PAYMENT: true,
   BANK: false,
   JOURNAL: false,
@@ -97,7 +99,7 @@ export const PAYMENT_METHOD_LABEL: Record<VoucherPaymentMethod, string> = {
 };
 
 // Per-type copy/labels used by the bill-allocation modal so the same
-// form works for Purchase / Receipt / Credit / Payment vouchers.
+// form works for Receipt / Credit / Supplier Payment vouchers.
 export type VoucherFormCopy = {
   subtitle: string;
   partySearchPlaceholder: string;
@@ -117,12 +119,12 @@ export const VOUCHER_FORM_COPY: Record<VoucherType, VoucherFormCopy> = {
     saveCta: 'Save Voucher',
   },
   PURCHASE: {
-    subtitle: 'Select a supplier and pick bills you are paying.',
+    subtitle: 'Record a supplier bill against a Job.',
     partySearchPlaceholder: 'Search supplier from master…',
-    allocColLabel: 'Paid Amt.',
-    totalLabel: 'Total Paid',
-    emptyHint: 'Select a supplier to load open bills.',
-    saveCta: 'Save Purchase Entry',
+    allocColLabel: 'P.O. Amt.',
+    totalLabel: 'P.O. Amount',
+    emptyHint: 'Pick a Job and Supplier to record a new bill.',
+    saveCta: 'Save Purchase Voucher',
   },
   PAYMENT: {
     subtitle: 'Select payee and pick bills you are paying.',
@@ -157,12 +159,12 @@ export const VOUCHER_FORM_COPY: Record<VoucherType, VoucherFormCopy> = {
     saveCta: 'Save Receipt',
   },
   SUPPLIER_PAYMENT: {
-    subtitle: 'Select a supplier and pick bills you are paying.',
+    subtitle: 'Select a supplier and pick bills you are paying off.',
     partySearchPlaceholder: 'Search supplier from master…',
     allocColLabel: 'Paid Amt.',
     totalLabel: 'Total Paid',
     emptyHint: 'Select a supplier to load open bills.',
-    saveCta: 'Save Purchase Voucher',
+    saveCta: 'Save Supplier Payment',
   },
   CREDIT_NOTE: {
     subtitle: 'Select a customer and pick invoices to issue credit against.',
