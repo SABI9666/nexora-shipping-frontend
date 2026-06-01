@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CreateVoucherModal } from './CreateVoucherModal';
 import { SupplierPaymentVoucherModal } from './SupplierPaymentVoucherModal';
+import { PurchaseVoucherModal } from './PurchaseVoucherModal';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, VOUCHER_USES_PAYMENT_FORM } from './constants';
 
 export default function VouchersPage() {
@@ -234,11 +235,14 @@ export default function VouchersPage() {
       </div>
 
       {modalOpen && (
-        VOUCHER_USES_PAYMENT_FORM[modalType]
-          ? <SupplierPaymentVoucherModal type={modalType} voucher={editingVoucher}
+        modalType === 'PURCHASE'
+          ? <PurchaseVoucherModal voucher={editingVoucher}
               onClose={closeModal} onSuccess={onModalSuccess} />
-          : <CreateVoucherModal voucher={editingVoucher}
-              onClose={closeModal} onSuccess={onModalSuccess} />
+          : VOUCHER_USES_PAYMENT_FORM[modalType]
+            ? <SupplierPaymentVoucherModal type={modalType} voucher={editingVoucher}
+                onClose={closeModal} onSuccess={onModalSuccess} />
+            : <CreateVoucherModal voucher={editingVoucher}
+                onClose={closeModal} onSuccess={onModalSuccess} />
       )}
     </DashboardLayout>
   );
