@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
   Receipt, Package, BookOpen, AlertCircle, FileSpreadsheet, FileText, ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
 
 interface DashboardSnapshot {
@@ -58,6 +59,13 @@ const REPORTS = [
     icon: FileText,
     color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   },
+  {
+    key: 'job-profit',
+    title: 'Job Profit Statement',
+    desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.',
+    icon: TrendingUp,
+    color: 'bg-teal-50 text-teal-700 border-teal-200',
+  },
 ];
 
 export default function ReportsPage() {
@@ -71,10 +79,9 @@ export default function ReportsPage() {
     <DashboardLayout>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
-        <p className="text-sm text-slate-500">Drill into invoices, orders, vouchers and per-account ledgers — with CSV export.</p>
+        <p className="text-sm text-slate-500">Drill into invoices, orders, vouchers, per-account ledgers, and per-Job profitability — with CSV / PDF export.</p>
       </div>
 
-      {/* This month tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -108,7 +115,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Report cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {REPORTS.map((r) => {
           const Icon = r.icon;
