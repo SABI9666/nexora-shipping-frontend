@@ -6,7 +6,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
-  Receipt, Package, BookOpen, AlertCircle, FileSpreadsheet, FileText, ChevronRight,
+  Receipt, Package, BookOpen, AlertCircle, AlertTriangle, FileSpreadsheet, FileText, ChevronRight,
   TrendingUp,
 } from 'lucide-react';
 
@@ -41,9 +41,16 @@ const REPORTS = [
   {
     key: 'outstanding-receivables',
     title: 'Outstanding Receivables',
-    desc: 'Open invoices with voucher-adjusted outstanding and days overdue.',
+    desc: 'Money customers owe you — open invoices with voucher-adjusted outstanding and days overdue.',
     icon: AlertCircle,
     color: 'bg-rose-50 text-rose-700 border-rose-200',
+  },
+  {
+    key: 'outstanding-payables',
+    title: 'Outstanding Payables',
+    desc: 'Money you owe suppliers — purchase vouchers minus payments per supplier.',
+    icon: AlertTriangle,
+    color: 'bg-orange-50 text-orange-700 border-orange-200',
   },
   {
     key: 'account-statement',
