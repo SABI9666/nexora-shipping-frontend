@@ -64,7 +64,6 @@ export default function ReportDetailPage() {
   const [asOf, setAsOf] = useState(initialRange.to);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  // Job-profit specific state — Job (order) picker with search-as-you-type.
   const [orderId, setOrderId] = useState('');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderSearchOpen, setOrderSearchOpen] = useState(false);
@@ -80,9 +79,6 @@ export default function ReportDetailPage() {
   });
   const accounts: Account[] = accountList?.data ?? [];
 
-  // Job picker — loads recent orders when the dropdown is open even with
-  // no search text, so the user can browse what Jobs exist instead of
-  // having to remember a Job number.
   const { data: orderSearchData } = useQuery({
     queryKey: ['report-order-search', orderSearch],
     enabled: needsOrder && orderSearchOpen,
@@ -153,6 +149,14 @@ export default function ReportDetailPage() {
         const jobNo = selectedOrderInfo?.orderNumber || 'JOB';
         const safe = jobNo.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
         await downloadDocx(`/reports/job-profit/pdf?${params}`, `JobProfit_${safe}.pdf`);
+      } else if (reportType === 'account-statement' && accountId) {
+        const params = new URLSearchParams();
+        params.set('accountId', accountId);
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        const accName = accounts.find((a) => a.id === accountId)?.name || 'ACCOUNT';
+        const safe = accName.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
+        await downloadDocx(`/reports/account-statement/pdf?${params}`, `Statement_${safe}.pdf`);
       }
     } catch {
       alert('Failed to download PDF.');
@@ -246,7 +250,7 @@ export default function ReportDetailPage() {
     }
   };
 
-  const showPdfButton = reportType === 'customer-statement' || reportType === 'job-profit';
+  const showPdfButton = reportType === 'customer-statement' || reportType === 'job-profit' || reportType === 'account-statement';
 
   return (
     <DashboardLayout>
@@ -262,7 +266,7 @@ export default function ReportDetailPage() {
           {showPdfButton && (
             <button
               onClick={handlePdfDownload}
-              disabled={!data || (reportType === 'customer-statement' && !accountId) || (reportType === 'job-profit' && !orderId) || downloadingPdf}
+              disabled={!data || (reportType === 'customer-statement' && !accountId) || (reportType === 'account-statement' && !accountId) || (reportType === 'job-profit' && !orderId) || downloadingPdf}
               className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
               {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
@@ -424,8 +428,6 @@ export default function ReportDetailPage() {
   );
 }
 
-// ── Section components ───────────────────────────────────────────────────────────────────────
-
 function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: 'emerald' | 'rose' | 'navy' }) {
   const tone =
     accent === 'emerald' ? 'text-emerald-700'
@@ -457,7 +459,6 @@ function SalesSummaryView({ data }: { data: SalesSummaryData }) {
         <StatCard label="Paid" value={formatCurrency(data.totals.paidAmount)} />
         <StatCard label="Outstanding" value={formatCurrency(data.totals.outstandingAmount)} />
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-5">
         <Panel title="By Status">
           <BreakdownTable rows={data.byStatus.map((s) => ({ label: s.status, count: s.count, amount: s.amount }))} />
@@ -469,7 +470,6 @@ function SalesSummaryView({ data }: { data: SalesSummaryData }) {
           <BreakdownTable rows={data.topCustomers.map((c) => ({ label: c.name, count: c.count, amount: c.amount }))} />
         </Panel>
       </div>
-
       <Panel title={`Invoices (${data.invoices.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -523,7 +523,6 @@ function OrdersSummaryView({ data }: { data: OrdersSummaryData }) {
           <BreakdownTable rows={data.byDestination.map((d) => ({ label: d.country, count: d.count, amount: d.amount }))} />
         </Panel>
       </div>
-
       <Panel title={`Orders (${data.orders.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -678,7 +677,6 @@ function OutstandingView({ data }: { data: OutstandingData }) {
   );
 }
 
-// ── Outstanding Payables (supplier-side) view ────────────────────────────────
 interface OutstandingPayablesData {
   asOf: string;
   totals: { supplierCount: number; totalOutstanding: number };
@@ -696,25 +694,19 @@ function OutstandingPayablesView({ data }: { data: OutstandingPayablesData }) {
         <StatCard label="Total paid" value={formatCurrency(grandPaid)} />
         <StatCard label="Outstanding to suppliers" value={formatCurrency(data.totals.totalOutstanding)} accent="rose" />
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-5">
         <Panel title="By Currency">
           <BreakdownTable rows={data.byCurrency.map((c) => ({ label: c.currency, count: c.count, amount: c.outstanding }))} />
         </Panel>
       </div>
-
       <Panel title={`Suppliers with outstanding balance (${data.rows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <Th>Code</Th>
-                <Th>Supplier</Th>
-                <Th>Group</Th>
-                <Th align="right">Purchases</Th>
-                <Th align="right">Paid</Th>
-                <Th align="right">Adjustments</Th>
-                <Th align="right">Outstanding</Th>
+                <Th>Code</Th><Th>Supplier</Th><Th>Group</Th>
+                <Th align="right">Purchases</Th><Th align="right">Paid</Th>
+                <Th align="right">Adjustments</Th><Th align="right">Outstanding</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -787,7 +779,6 @@ function StatementView({ data }: { data: StatementData }) {
           </div>
         </div>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         <StatCard
           label="Opening"
@@ -796,7 +787,6 @@ function StatementView({ data }: { data: StatementData }) {
         <StatCard label="Total debit (period)" value={formatCurrency(data.totals.totalDebit)} />
         <StatCard label="Total credit (period)" value={formatCurrency(data.totals.totalCredit)} />
       </div>
-
       <Panel title={`Ledger (${data.rows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -837,7 +827,6 @@ function StatementView({ data }: { data: StatementData }) {
   );
 }
 
-// ── Customer Statement (SOA) view ───────────────────────────────────────────
 interface CustomerStatementVoucher {
   id: string;
   voucherNumber: string;
@@ -903,7 +892,6 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
           </div>
         </div>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
         <StatCard label="Open invoices" value={String(data.totals.invoiceCount)} />
         <StatCard label="Total outstanding" value={formatCurrency(data.totals.totalOutstanding, data.currency)} />
@@ -914,18 +902,13 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
         />
         <StatCard label="As of" value={formatDate(data.asOf)} />
       </div>
-
       <Panel title={`Outstanding invoices (${data.rows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <Th align="center">Sl No</Th>
-                <Th>Invoice No</Th>
-                <Th>Date</Th>
-                <Th align="center">Days</Th>
-                <Th align="right">Balance Amount</Th>
-                <Th align="right">Cum. Balance</Th>
+                <Th align="center">Sl No</Th><Th>Invoice No</Th><Th>Date</Th>
+                <Th align="center">Days</Th><Th align="right">Balance Amount</Th><Th align="right">Cum. Balance</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -956,22 +939,14 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
           </table>
         </div>
       </Panel>
-
       <div className="h-4" />
-
       <Panel title={`Receipts & Allocations (${vouchers.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <Th>Date</Th>
-                <Th>Voucher #</Th>
-                <Th>Type</Th>
-                <Th>Method</Th>
-                <Th>Applied To</Th>
-                <Th>Narration</Th>
-                <Th align="right">Debit</Th>
-                <Th align="right">Credit</Th>
+                <Th>Date</Th><Th>Voucher #</Th><Th>Type</Th><Th>Method</Th><Th>Applied To</Th>
+                <Th>Narration</Th><Th align="right">Debit</Th><Th align="right">Credit</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1034,7 +1009,6 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
   );
 }
 
-// ── Job Profit Statement view ───────────────────────────────────────────────
 interface JobProfitDataT {
   order: {
     orderNumber: string;
@@ -1075,7 +1049,6 @@ interface JobProfitDataT {
 function JobProfitView({ data }: { data: JobProfitDataT }) {
   const cur = data.salesRows[0]?.currency || data.purchaseRows[0]?.currency || 'AED';
   const profitTone: 'emerald' | 'rose' = data.totals.netProfit >= 0 ? 'emerald' : 'rose';
-
   return (
     <>
       <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
@@ -1100,26 +1073,19 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
           </div>
         </div>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
         <StatCard label="Total Sales (S)" value={formatCurrency(data.totals.totalSales, cur)} accent="emerald" />
         <StatCard label="Total Purchase (P)" value={formatCurrency(data.totals.totalPurchase, cur)} accent="rose" />
         <StatCard label="Net Profit (S − P)" value={formatCurrency(data.totals.netProfit, cur)} accent={profitTone} />
         <StatCard label="Current Outstanding" value={formatCurrency(data.totals.totalOutstanding, cur)} accent="navy" sub="receivable on this Job" />
       </div>
-
       <Panel title={`Purchase — costs against this Job (${data.purchaseRows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <Th align="center">#</Th>
-                <Th>Voucher #</Th>
-                <Th>Date</Th>
-                <Th>Supplier</Th>
-                <Th>Ref / Sup Inv</Th>
-                <Th>Narration</Th>
-                <Th align="right">Amount</Th>
+                <Th align="center">#</Th><Th>Voucher #</Th><Th>Date</Th><Th>Supplier</Th>
+                <Th>Ref / Sup Inv</Th><Th>Narration</Th><Th align="right">Amount</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1152,22 +1118,14 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
           </table>
         </div>
       </Panel>
-
       <div className="h-4" />
-
       <Panel title={`Sales — invoices issued on this Job (${data.salesRows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <Th align="center">#</Th>
-                <Th>Invoice #</Th>
-                <Th>Date</Th>
-                <Th>Customer</Th>
-                <Th>Status</Th>
-                <Th align="right">Paid</Th>
-                <Th align="right">Outstanding</Th>
-                <Th align="right">Total</Th>
+                <Th align="center">#</Th><Th>Invoice #</Th><Th>Date</Th><Th>Customer</Th>
+                <Th>Status</Th><Th align="right">Paid</Th><Th align="right">Outstanding</Th><Th align="right">Total</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1198,9 +1156,7 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
           </table>
         </div>
       </Panel>
-
       <div className="h-4" />
-
       <div className="bg-brand-navy text-white rounded-xl p-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-white/70 mb-3">Summary</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1224,7 +1180,6 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
   );
 }
 
-// ── Small reusable bits ────────────────────────────────────────────────────────────────────────
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
