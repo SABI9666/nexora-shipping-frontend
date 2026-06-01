@@ -8,9 +8,9 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Voucher, Account } from '@/types';
+import { Voucher, Account, Order } from '@/types';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, PAYMENT_METHOD_LABEL } from '@/app/vouchers/constants';
-import { ArrowLeft, Download, FileText, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Loader2, Briefcase } from 'lucide-react';
 
 const REPORT_META: Record<string, { title: string; desc: string }> = {
   'sales-summary': { title: 'Sales Summary', desc: 'Invoices issued, paid and outstanding for the period.' },
@@ -19,6 +19,7 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'outstanding-receivables': { title: 'Outstanding Receivables', desc: 'Open invoices with voucher-adjusted outstanding.' },
   'account-statement': { title: 'Account Statement', desc: 'Per-account ledger — chronological Dr/Cr.' },
   'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days, cumulative balance, and receipts / allocations.' },
+  'job-profit': { title: 'Job Profit Statement', desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -62,22 +63,39 @@ export default function ReportDetailPage() {
   const [asOf, setAsOf] = useState(initialRange.to);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
+  // Job-profit specific state — Job (order) picker with search-as-you-type.
+  const [orderId, setOrderId] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderSearchOpen, setOrderSearchOpen] = useState(false);
+  const [selectedOrderInfo, setSelectedOrderInfo] = useState<{ id: string; orderNumber: string } | null>(null);
+
   const needsAccount = reportType === 'account-statement' || reportType === 'customer-statement';
+  const needsOrder = reportType === 'job-profit';
+
   const { data: accountList } = useQuery({
     queryKey: ['report-accounts'],
     queryFn: () => api.get('/accounts?limit=1000').then((r) => r.data).catch(() => ({ data: [] })),
+    enabled: !needsOrder,
   });
   const accounts: Account[] = accountList?.data ?? [];
 
-  const queryKey = ['report', reportType, from, to, voucherType, accountId, asOf];
+  const { data: orderSearchData } = useQuery({
+    queryKey: ['report-order-search', orderSearch],
+    enabled: needsOrder && orderSearch.trim().length >= 2,
+    queryFn: () => api.get(`/orders?limit=15&search=${encodeURIComponent(orderSearch.trim())}`)
+      .then((r) => r.data).catch(() => ({ data: [] })),
+  });
+  const orderResults: Order[] = orderSearchData?.data ?? [];
+
+  const queryKey = ['report', reportType, from, to, voucherType, accountId, asOf, orderId];
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey,
-    enabled: !needsAccount || !!accountId,
+    enabled: (!needsAccount || !!accountId) && (!needsOrder || !!orderId),
     queryFn: () => {
       const params = new URLSearchParams();
       if (reportType === 'outstanding-receivables' || reportType === 'customer-statement') {
         params.set('asOf', asOf);
-      } else {
+      } else if (reportType !== 'job-profit') {
         if (from) params.set('from', from);
         if (to) params.set('to', to);
       }
@@ -88,23 +106,43 @@ export default function ReportDetailPage() {
       if (reportType === 'account-statement' || reportType === 'customer-statement') {
         params.set('accountId', accountId);
       }
+      if (reportType === 'job-profit') {
+        params.set('orderId', orderId);
+      }
       return api.get(`/reports/${reportType}?${params}`).then((r) => r.data.data);
     },
   });
 
+  const pickOrder = (o: Order) => {
+    setOrderId(o.id);
+    setSelectedOrderInfo({ id: o.id, orderNumber: o.orderNumber });
+    setOrderSearch('');
+    setOrderSearchOpen(false);
+  };
+  const clearOrder = () => {
+    setOrderId('');
+    setSelectedOrderInfo(null);
+  };
+
   const handlePdfDownload = async () => {
-    if (!accountId) return;
     setDownloadingPdf(true);
     try {
-      const params = new URLSearchParams();
-      params.set('accountId', accountId);
-      if (asOf) params.set('asOf', asOf);
-      const customerName = accounts.find((a) => a.id === accountId)?.name || 'CUSTOMER';
-      const safe = customerName.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
-      const stamp = asOf.replace(/-/g, '');
-      await downloadDocx(`/reports/customer-statement/pdf?${params}`, `SOA_${safe}_${stamp}.pdf`);
+      if (reportType === 'customer-statement' && accountId) {
+        const params = new URLSearchParams();
+        params.set('accountId', accountId);
+        if (asOf) params.set('asOf', asOf);
+        const customerName = accounts.find((a) => a.id === accountId)?.name || 'CUSTOMER';
+        const safe = customerName.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
+        const stamp = asOf.replace(/-/g, '');
+        await downloadDocx(`/reports/customer-statement/pdf?${params}`, `SOA_${safe}_${stamp}.pdf`);
+      } else if (reportType === 'job-profit' && orderId) {
+        const params = new URLSearchParams({ orderId });
+        const jobNo = selectedOrderInfo?.orderNumber || 'JOB';
+        const safe = jobNo.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
+        await downloadDocx(`/reports/job-profit/pdf?${params}`, `JobProfit_${safe}.pdf`);
+      }
     } catch {
-      alert('Failed to download SOA PDF.');
+      alert('Failed to download PDF.');
     } finally {
       setDownloadingPdf(false);
     }
@@ -162,8 +200,33 @@ export default function ReportDetailPage() {
         idx + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10), r.days, r.balance, r.cumBalance,
       ]);
       downloadCsv(`SOA-${data.account?.code || 'customer'}-${asOf}.csv`, toCsv(headers, rows));
+    } else if (reportType === 'job-profit') {
+      const jp = data as JobProfitDataT;
+      const lines: string[] = [];
+      lines.push(`Job Profit Statement - ${jp.order.orderNumber}`);
+      lines.push('');
+      lines.push('PURCHASE');
+      lines.push(toCsv(
+        ['#', 'Voucher #', 'Date', 'Supplier', 'Ref', 'Narration', 'Currency', 'Amount'],
+        jp.purchaseRows.map((r, i) => [i + 1, r.voucherNumber, r.voucherDate?.slice(0, 10) || '', r.supplierName, r.ref, r.narration, r.currency, r.amount]),
+      ));
+      lines.push('');
+      lines.push('SALES');
+      lines.push(toCsv(
+        ['#', 'Invoice #', 'Date', 'Customer', 'Status', 'Currency', 'Paid', 'Outstanding', 'Total'],
+        jp.salesRows.map((r, i) => [i + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10) || '', r.billToName, r.status, r.currency, r.paid, r.outstanding, r.total]),
+      ));
+      lines.push('');
+      lines.push('SUMMARY');
+      lines.push(toCsv(
+        ['Total Sales', 'Total Purchase', 'Net Profit', 'Current Outstanding'],
+        [[jp.totals.totalSales, jp.totals.totalPurchase, jp.totals.netProfit, jp.totals.totalOutstanding]],
+      ));
+      downloadCsv(`JobProfit_${jp.order.orderNumber}.csv`, lines.join('\n'));
     }
   };
+
+  const showPdfButton = reportType === 'customer-statement' || reportType === 'job-profit';
 
   return (
     <DashboardLayout>
@@ -176,10 +239,10 @@ export default function ReportDetailPage() {
           <p className="text-sm text-slate-500">{meta.desc}</p>
         </div>
         <div className="flex items-center gap-2">
-          {reportType === 'customer-statement' && (
+          {showPdfButton && (
             <button
               onClick={handlePdfDownload}
-              disabled={!data || !accountId || downloadingPdf}
+              disabled={!data || (reportType === 'customer-statement' && !accountId) || (reportType === 'job-profit' && !orderId) || downloadingPdf}
               className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
               {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
@@ -203,6 +266,43 @@ export default function ReportDetailPage() {
             <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">As of</label>
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
               className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg" />
+          </div>
+        ) : reportType === 'job-profit' ? (
+          <div className="relative min-w-[320px] flex-1">
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Job No</label>
+            <div className="relative">
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input value={orderSearch}
+                onChange={(e) => { setOrderSearch(e.target.value); setOrderSearchOpen(true); }}
+                onFocus={() => setOrderSearchOpen(true)}
+                placeholder={selectedOrderInfo ? selectedOrderInfo.orderNumber : 'Type job / order number to search…'}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy/20" />
+              {orderSearchOpen && orderSearch.trim().length >= 2 && (
+                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  {orderResults.length === 0 ? (
+                    <div className="p-2 text-xs text-slate-400">No matching jobs.</div>
+                  ) : orderResults.map((o) => (
+                    <button key={o.id} type="button" onClick={() => pickOrder(o)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-mono font-semibold text-brand-navy truncate">{o.orderNumber}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          {o.pickupCity || '—'} → {o.deliveryCity || '—'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">{o.status}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedOrderInfo && (
+              <div className="mt-2 px-3 py-1.5 bg-brand-navy/5 border border-brand-navy/10 rounded-lg flex items-center justify-between text-sm">
+                <div className="font-mono font-semibold text-brand-navy truncate">JOB {selectedOrderInfo.orderNumber}</div>
+                <button type="button" onClick={clearOrder}
+                  className="text-xs text-slate-400 hover:text-rose-600">Clear</button>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -280,10 +380,16 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'outstanding-receivables' && <OutstandingView data={data} />}
       {!isLoading && data && reportType === 'account-statement' && <StatementView data={data} />}
       {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
+      {!isLoading && data && reportType === 'job-profit' && <JobProfitView data={data} />}
 
       {!isLoading && !data && needsAccount && !accountId && (
         <div className="text-center py-12 text-slate-400 text-sm">
           Pick {reportType === 'customer-statement' ? 'a customer' : 'an account'} to view {reportType === 'customer-statement' ? 'their outstanding statement' : 'its statement'}.
+        </div>
+      )}
+      {!isLoading && !data && needsOrder && !orderId && (
+        <div className="text-center py-12 text-slate-400 text-sm">
+          Pick a Job above to view its profit statement.
         </div>
       )}
     </DashboardLayout>
@@ -292,11 +398,16 @@ export default function ReportDetailPage() {
 
 // ── Section components ───────────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: 'emerald' | 'rose' | 'navy' }) {
+  const tone =
+    accent === 'emerald' ? 'text-emerald-700'
+    : accent === 'rose' ? 'text-rose-700'
+    : accent === 'navy' ? 'text-brand-navy'
+    : 'text-slate-900';
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4">
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
-      <p className="text-xl font-bold text-slate-900 mt-1">{value}</p>
+      <p className={`text-xl font-bold mt-1 ${tone}`}>{value}</p>
       {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
     </div>
   );
@@ -812,6 +923,196 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
           </table>
         </div>
       </Panel>
+    </>
+  );
+}
+
+// ── Job Profit Statement view ───────────────────────────────────────────────
+interface JobProfitDataT {
+  order: {
+    orderNumber: string;
+    createdAt: string;
+    status?: string;
+    customer?: string | null;
+    salesperson?: string | null;
+    pickupCity?: string | null;
+    deliveryCity?: string | null;
+  };
+  purchaseRows: {
+    voucherNumber: string;
+    voucherDate: string;
+    supplierCode?: string;
+    supplierName: string;
+    ref: string;
+    narration: string;
+    currency: string;
+    amount: number;
+  }[];
+  salesRows: {
+    invoiceNumber: string;
+    invoiceDate: string;
+    billToName: string;
+    currency: string;
+    total: number;
+    paid: number;
+    outstanding: number;
+    status: string;
+  }[];
+  totals: {
+    totalPurchase: number;
+    totalSales: number;
+    netProfit: number;
+    totalOutstanding: number;
+  };
+}
+function JobProfitView({ data }: { data: JobProfitDataT }) {
+  const cur = data.salesRows[0]?.currency || data.purchaseRows[0]?.currency || 'AED';
+  const profitTone: 'emerald' | 'rose' = data.totals.netProfit >= 0 ? 'emerald' : 'rose';
+
+  return (
+    <>
+      <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Job Profit Statement</p>
+            <p className="text-2xl font-bold text-brand-navy mt-1 font-mono">{data.order.orderNumber}</p>
+            <p className="text-sm text-slate-600 mt-1">
+              {data.order.customer || '—'}
+              {data.order.salesperson ? <span className="text-slate-400"> · Salesperson: {data.order.salesperson}</span> : null}
+            </p>
+            {(data.order.pickupCity || data.order.deliveryCity) && (
+              <p className="text-xs text-slate-500 mt-1">
+                {data.order.pickupCity || '—'} → {data.order.deliveryCity || '—'}
+              </p>
+            )}
+          </div>
+          <div className="text-right space-y-0.5">
+            <p className="text-xs text-slate-400 uppercase tracking-wider">Created</p>
+            <p className="text-sm font-semibold text-slate-700">{formatDate(data.order.createdAt)}</p>
+            {data.order.status && <Pill>{data.order.status}</Pill>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Total Sales (S)" value={formatCurrency(data.totals.totalSales, cur)} accent="emerald" />
+        <StatCard label="Total Purchase (P)" value={formatCurrency(data.totals.totalPurchase, cur)} accent="rose" />
+        <StatCard label="Net Profit (S − P)" value={formatCurrency(data.totals.netProfit, cur)} accent={profitTone} />
+        <StatCard label="Current Outstanding" value={formatCurrency(data.totals.totalOutstanding, cur)} accent="navy" sub="receivable on this Job" />
+      </div>
+
+      <Panel title={`Purchase — costs against this Job (${data.purchaseRows.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th align="center">#</Th>
+                <Th>Voucher #</Th>
+                <Th>Date</Th>
+                <Th>Supplier</Th>
+                <Th>Ref / Sup Inv</Th>
+                <Th>Narration</Th>
+                <Th align="right">Amount</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.purchaseRows.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No purchase vouchers recorded against this Job.</td></tr>
+              )}
+              {data.purchaseRows.map((r, idx) => (
+                <tr key={r.voucherNumber} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 text-center text-slate-400">{idx + 1}</td>
+                  <td className="px-4 py-2 font-mono text-brand-navy">{r.voucherNumber}</td>
+                  <td className="px-4 py-2 text-slate-500">{formatDate(r.voucherDate)}</td>
+                  <td className="px-4 py-2">
+                    {r.supplierCode ? <span className="font-mono text-xs text-slate-400 mr-1">{r.supplierCode}</span> : null}
+                    {r.supplierName}
+                  </td>
+                  <td className="px-4 py-2 text-xs font-mono text-slate-500">{r.ref || '—'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-600 max-w-[280px] truncate" title={r.narration}>{r.narration || '—'}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-rose-700">{formatCurrency(r.amount, r.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {data.purchaseRows.length > 0 && (
+              <tfoot className="bg-rose-50/50 border-t-2 border-rose-300">
+                <tr>
+                  <td colSpan={6} className="px-4 py-2 text-right text-xs font-bold text-rose-700 uppercase">Total Purchase</td>
+                  <td className="px-4 py-2 text-right font-bold text-rose-700">{formatCurrency(data.totals.totalPurchase, cur)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Panel>
+
+      <div className="h-4" />
+
+      <Panel title={`Sales — invoices issued on this Job (${data.salesRows.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th align="center">#</Th>
+                <Th>Invoice #</Th>
+                <Th>Date</Th>
+                <Th>Customer</Th>
+                <Th>Status</Th>
+                <Th align="right">Paid</Th>
+                <Th align="right">Outstanding</Th>
+                <Th align="right">Total</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.salesRows.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No invoices issued on this Job.</td></tr>
+              )}
+              {data.salesRows.map((r, idx) => (
+                <tr key={r.invoiceNumber} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 text-center text-slate-400">{idx + 1}</td>
+                  <td className="px-4 py-2 font-mono text-brand-navy">{r.invoiceNumber}</td>
+                  <td className="px-4 py-2 text-slate-500">{formatDate(r.invoiceDate)}</td>
+                  <td className="px-4 py-2">{r.billToName}</td>
+                  <td className="px-4 py-2"><Pill>{r.status}</Pill></td>
+                  <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.paid, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-rose-700">{formatCurrency(r.outstanding, r.currency)}</td>
+                  <td className="px-4 py-2 text-right font-semibold">{formatCurrency(r.total, r.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {data.salesRows.length > 0 && (
+              <tfoot className="bg-emerald-50/50 border-t-2 border-emerald-300">
+                <tr>
+                  <td colSpan={7} className="px-4 py-2 text-right text-xs font-bold text-emerald-700 uppercase">Total Sales</td>
+                  <td className="px-4 py-2 text-right font-bold text-emerald-700">{formatCurrency(data.totals.totalSales, cur)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Panel>
+
+      <div className="h-4" />
+
+      <div className="bg-brand-navy text-white rounded-xl p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-white/70 mb-3">Summary</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <p className="text-xs text-white/60">Total Sales</p>
+            <p className="text-xl font-bold text-emerald-300 mt-1">{formatCurrency(data.totals.totalSales, cur)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-white/60">Total Purchase</p>
+            <p className="text-xl font-bold text-rose-300 mt-1">{formatCurrency(data.totals.totalPurchase, cur)}</p>
+          </div>
+          <div className="border-l border-white/10 pl-4">
+            <p className="text-xs text-white/60">NET PROFIT (S − P)</p>
+            <p className={`text-2xl font-bold mt-1 ${data.totals.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+              {formatCurrency(data.totals.netProfit, cur)}
+            </p>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
