@@ -276,6 +276,22 @@ export default function OrderDetailPage() {
     queryFn: () => api.get(`/orders/${id}`).then((r) => r.data.data as OrderDetail),
   });
 
+  // Invoices billed against this Job — drives the Order Summary.
+  // We show the actual invoiced amount instead of order.price.
+  const { data: invoicesData } = useQuery({
+    queryKey: ['order-invoices', id],
+    enabled: !!id,
+    queryFn: () =>
+      api
+        .get(`/invoices?orderId=${id}&limit=200`)
+        .then((r) => r.data.data as { id: string; total: number; currency: string }[])
+        .catch(() => [] as { id: string; total: number; currency: string }[]),
+  });
+  const invoiceList = invoicesData ?? [];
+  const invoiceTotal = invoiceList.reduce((s, inv) => s + (inv.total || 0), 0);
+  const invoiceCurrency = invoiceList[0]?.currency || 'AED';
+  const hasInvoices = invoiceList.length > 0;
+
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/orders/${id}`),
     onSuccess: () => {
@@ -543,8 +559,17 @@ export default function OrderDetailPage() {
             </h2>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Shipping fee</span>
-                <span className="font-semibold">{order.price ? formatCurrency(order.price) : '—'}</span>
+                <span className="text-slate-500">
+                  Invoice Amount
+                  {hasInvoices && (
+                    <span className="text-xs text-slate-400 ml-1">
+                      ({invoiceList.length} invoice{invoiceList.length !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </span>
+                <span className="font-semibold">
+                  {hasInvoices ? formatCurrency(invoiceTotal, invoiceCurrency) : '—'}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Documents</span>
@@ -552,7 +577,9 @@ export default function OrderDetailPage() {
               </div>
               <div className="border-t border-slate-100 pt-3 flex justify-between">
                 <span className="font-semibold text-slate-800">Total</span>
-                <span className="font-bold text-brand-navy text-lg">{order.price ? formatCurrency(order.price) : '—'}</span>
+                <span className="font-bold text-brand-navy text-lg">
+                  {hasInvoices ? formatCurrency(invoiceTotal, invoiceCurrency) : '—'}
+                </span>
               </div>
             </div>
           </div>

@@ -79,11 +79,19 @@ export default function ReportDetailPage() {
   });
   const accounts: Account[] = accountList?.data ?? [];
 
+  // Job picker — loads recent orders when the dropdown is open even with
+  // no search text, so the user can browse what Jobs exist instead of
+  // having to remember a Job number.
   const { data: orderSearchData } = useQuery({
     queryKey: ['report-order-search', orderSearch],
-    enabled: needsOrder && orderSearch.trim().length >= 2,
-    queryFn: () => api.get(`/orders?limit=15&search=${encodeURIComponent(orderSearch.trim())}`)
-      .then((r) => r.data).catch(() => ({ data: [] })),
+    enabled: needsOrder && orderSearchOpen,
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '25' });
+      const s = orderSearch.trim();
+      if (s.length >= 1) params.set('search', s);
+      return api.get(`/orders?${params}`)
+        .then((r) => r.data).catch(() => ({ data: [] }));
+    },
   });
   const orderResults: Order[] = orderSearchData?.data ?? [];
 
@@ -275,12 +283,19 @@ export default function ReportDetailPage() {
               <input value={orderSearch}
                 onChange={(e) => { setOrderSearch(e.target.value); setOrderSearchOpen(true); }}
                 onFocus={() => setOrderSearchOpen(true)}
-                placeholder={selectedOrderInfo ? selectedOrderInfo.orderNumber : 'Type job / order number to search…'}
+                placeholder={selectedOrderInfo ? selectedOrderInfo.orderNumber : 'Click to browse Jobs or type a Job No to filter…'}
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy/20" />
-              {orderSearchOpen && orderSearch.trim().length >= 2 && (
-                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+              {orderSearchOpen && (
+                <div className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+                    {orderSearch.trim() ? `Matches for "${orderSearch.trim()}"` : 'Recent Jobs'}
+                  </div>
                   {orderResults.length === 0 ? (
-                    <div className="p-2 text-xs text-slate-400">No matching jobs.</div>
+                    <div className="p-3 text-xs text-slate-400">
+                      {orderSearch.trim()
+                        ? `No Jobs match "${orderSearch.trim()}". Tip: type a Job No like NEXDX-2026-00045 — VCH numbers are vouchers, not Jobs.`
+                        : 'No Jobs yet. Create an order first.'}
+                    </div>
                   ) : orderResults.map((o) => (
                     <button key={o.id} type="button" onClick={() => pickOrder(o)}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
