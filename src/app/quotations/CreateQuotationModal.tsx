@@ -7,7 +7,9 @@ import { formatCurrency } from '@/lib/utils';
 import { Order, QuotationStatus, InvoiceCurrency, ChargeItem } from '@/types';
 import { Plus, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 
-const CURRENCIES: InvoiceCurrency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR'];
+// AED leads the list — the default for UAE-based operations — followed
+// by the other ledger currencies the invoice templates support.
+const CURRENCIES: InvoiceCurrency[] = ['AED', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'SAR'];
 
 const STATUSES: { value: QuotationStatus; label: string }[] = [
   { value: 'DRAFT', label: 'Draft' },
@@ -51,7 +53,7 @@ const emptyForm = (): QuotationForm => ({
   billToEmail: '', billToPhone: '',
   shipFromName: 'Nexora Express', shipFromAddress: '1 Nexora Way',
   shipFromCity: 'London', shipFromCountry: 'GB',
-  currency: 'USD',
+  currency: 'AED',
   taxRate: '0', shippingCost: '0',
   terms: 'This quotation is valid for 30 days from the date of issue.',
   notes: '', validUntil: '',
