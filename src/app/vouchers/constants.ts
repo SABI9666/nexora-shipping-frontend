@@ -127,11 +127,11 @@ export const VOUCHER_FORM_COPY: Record<VoucherType, VoucherFormCopy> = {
     saveCta: 'Save Purchase Voucher',
   },
   PAYMENT: {
-    subtitle: 'Select payee and pick bills you are paying.',
-    partySearchPlaceholder: 'Search payee from master…',
+    subtitle: 'Select the supplier and pick the Purchase Vouchers you are paying.',
+    partySearchPlaceholder: 'Search supplier from master…',
     allocColLabel: 'Paid Amt.',
     totalLabel: 'Total Paid',
-    emptyHint: 'Select a payee to load open bills.',
+    emptyHint: 'Select a supplier to load their open Purchase Vouchers.',
     saveCta: 'Save Payment',
   },
   BANK: {
@@ -159,11 +159,11 @@ export const VOUCHER_FORM_COPY: Record<VoucherType, VoucherFormCopy> = {
     saveCta: 'Save Receipt',
   },
   SUPPLIER_PAYMENT: {
-    subtitle: 'Select a supplier and pick bills you are paying off.',
+    subtitle: 'Select a supplier and pick the Purchase Vouchers you are paying off.',
     partySearchPlaceholder: 'Search supplier from master…',
     allocColLabel: 'Paid Amt.',
     totalLabel: 'Total Paid',
-    emptyHint: 'Select a supplier to load open bills.',
+    emptyHint: 'Select a supplier to load their open Purchase Vouchers.',
     saveCta: 'Save Supplier Payment',
   },
   CREDIT_NOTE: {
@@ -175,11 +175,11 @@ export const VOUCHER_FORM_COPY: Record<VoucherType, VoucherFormCopy> = {
     saveCta: 'Save Credit Voucher',
   },
   DEBIT_NOTE: {
-    subtitle: 'Select a supplier and pick bills to debit against.',
+    subtitle: 'Select a supplier and pick the Purchase Vouchers to debit against.',
     partySearchPlaceholder: 'Search supplier from master…',
     allocColLabel: 'Dr. Amt.',
     totalLabel: 'Total Debit',
-    emptyHint: 'Select a supplier to load open bills.',
+    emptyHint: 'Select a supplier to load their open Purchase Vouchers.',
     saveCta: 'Save Debit Voucher',
   },
 };
