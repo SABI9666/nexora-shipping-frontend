@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText } from 'lucide-react';
+import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText, Briefcase } from 'lucide-react';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { Voucher, VoucherType, Account, Salesperson, BankAccount } from '@/types';
+import { Voucher, VoucherType, Account, Salesperson, BankAccount, Order } from '@/types';
 import {
   VOUCHER_TYPE_LABEL,
   PAYMENT_METHOD_LABEL,
@@ -13,47 +13,43 @@ import {
   VOUCHER_FORM_COPY,
 } from './constants';
 
+// The API returns bankAccountId / bankAccount on each voucher (scalar +
+// relation) even though the shared Voucher type doesn't list them yet.
+type EditableVoucher = Voucher & {
+  bankAccountId?: string | null;
+  bankAccount?: { id: string } | null;
+};
+
 interface Props {
   type: VoucherType;
+  voucher?: EditableVoucher | null; // when set, the modal is in edit mode
   onClose: () => void;
   onSuccess: (voucher: Voucher) => void;
 }
 
-// Customer-side voucher types allocate against customer invoices.
-// Supplier-side types allocate against Purchase vouchers — the bill
-// list pulls from /vouchers/open-purchases and each row carries
-// purchaseVoucherId so Job Profit / Outstanding Payables / Account
-// Statement can show exactly which supplier bill a payment cleared.
-const IS_SUPPLIER_PAYMENT_TYPE: Record<VoucherType, boolean> = {
-  CASH: false,
-  PURCHASE: false,
-  PAYMENT: true,
-  BANK: false,
-  JOURNAL: false,
-  RECEIPT: false,
-  SUPPLIER_PAYMENT: true,
-  CREDIT_NOTE: false,
-  DEBIT_NOTE: true,
-};
-
-// Shape returned by /vouchers/open-bills (customer invoices) AND
-// /vouchers/open-purchases (supplier bills). The two endpoints share
-// enough of the same fields that the allocation row mapping below can
-// treat them uniformly via this normalised type.
-interface OpenItem {
+interface OpenBill {
   id: string;
-  // Invoice case
-  invoiceNumber?: string;
-  invoiceDate?: string;
-  refNo?: string | null;
-  status?: string;
-  // Purchase voucher case
-  voucherNumber?: string;
-  voucherDate?: string;
-  narration?: string | null;
-  // Common
+  invoiceNumber: string;
+  invoiceDate: string;
   currency: string;
   jobNo: string | null;
+  refNo: string | null;
+  status: string;
+  billAmount: number;
+  paidAmount: number;
+  balance: number;
+}
+
+// Open Purchase Voucher for a supplier — the supplier-side counterpart of
+// OpenBill, returned by GET /vouchers/open-purchases.
+interface OpenPurchase {
+  id: string;
+  voucherNumber: string;
+  voucherDate: string;
+  currency: string;
+  jobNo: string | null;
+  refNo: string | null;
+  narration: string | null;
   billAmount: number;
   paidAmount: number;
   balance: number;
@@ -61,13 +57,11 @@ interface OpenItem {
 
 interface AllocationRow {
   invoiceId: string;
-  // Set when the row was loaded from a Purchase voucher (supplier
-  // payment flow). Survives the save and powers the cross-report
-  // linkage feature.
+  // Set on supplier-side vouchers — the Purchase Voucher this line settles.
   purchaseVoucherId: string;
   jobNo: string;
   refNo: string;
-  invoiceNumber: string; // also doubles as Purchase voucher # in supplier mode
+  invoiceNumber: string;
   invoiceDate: string;
   billAmount: number;
   allocatedAmount: number;
@@ -85,6 +79,13 @@ interface InvoiceSearchResult {
   status: string;
   jobNo?: string | null;
   customerRef?: string | null;
+}
+
+interface OrderPick {
+  id: string;
+  orderNumber: string;
+  pickupCity?: string;
+  deliveryCity?: string;
 }
 
 function searchAccounts(accounts: Account[], q: string, limit = 30): Account[] {
@@ -109,26 +110,70 @@ function searchBanks(banks: BankAccount[], q: string, limit = 30): BankAccount[]
   ).slice(0, limit);
 }
 
-export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props) {
-  const copy = VOUCHER_FORM_COPY[type];
-  const isSupplierSide = IS_SUPPLIER_PAYMENT_TYPE[type];
+function allocationsFromVoucher(voucher?: EditableVoucher | null): AllocationRow[] {
+  if (!voucher?.allocations?.length) return [];
+  return voucher.allocations.map((a) => {
+    const alloc = a as typeof a & {
+      purchaseVoucherId?: string | null;
+      purchaseVoucher?: { id?: string } | null;
+    };
+    const purchaseVoucherId = alloc.purchaseVoucherId || alloc.purchaseVoucher?.id || '';
+    return {
+      invoiceId: a.invoiceId || '',
+      purchaseVoucherId,
+      jobNo: a.jobNo || '',
+      refNo: a.refNo || '',
+      invoiceNumber: a.invoiceNumber || '',
+      invoiceDate: a.invoiceDate ? a.invoiceDate.slice(0, 10) : '',
+      billAmount: a.billAmount,
+      allocatedAmount: a.allocatedAmount,
+      selected: true,
+      isCustom: !a.invoiceId && !purchaseVoucherId,
+    };
+  });
+}
 
-  const [voucherDate, setVoucherDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>('CASH');
-  const [accountId, setAccountId] = useState('');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [collectedRepId, setCollectedRepId] = useState('');
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [chequeDate, setChequeDate] = useState('');
-  const [presentOn, setPresentOn] = useState('');
-  const [clearedOn, setClearedOn] = useState('');
-  const [accountPayee, setAccountPayee] = useState(true);
-  const [printCheque, setPrintCheque] = useState(false);
-  const [againstType, setAgainstType] = useState('Bill');
-  const [issuedTo, setIssuedTo] = useState('');
-  const [narration, setNarration] = useState('');
-  const [currency, setCurrency] = useState('AED');
-  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess }: Props) {
+  const isEdit = !!voucher;
+  const copy = VOUCHER_FORM_COPY[type];
+  // Supplier-side vouchers settle Purchase Vouchers (supplier bills) rather
+  // than customer invoices, so they load open Purchase Vouchers and tag
+  // each allocation with its purchaseVoucherId.
+  const isSupplierSide = type === 'PAYMENT' || type === 'SUPPLIER_PAYMENT' || type === 'DEBIT_NOTE';
+
+  const [voucherDate, setVoucherDate] = useState(() =>
+    voucher?.voucherDate ? voucher.voucherDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<VoucherPaymentMethod>(
+    (voucher?.paymentMethod as VoucherPaymentMethod) || 'CASH');
+  const [accountId, setAccountId] = useState(voucher?.accountId || '');
+  const [bankAccountId, setBankAccountId] = useState(voucher?.bankAccountId || voucher?.bankAccount?.id || '');
+  const [collectedRepId, setCollectedRepId] = useState(voucher?.collectedRepId || '');
+  const [chequeNumber, setChequeNumber] = useState(voucher?.chequeNumber || '');
+  const [chequeDate, setChequeDate] = useState(voucher?.chequeDate ? voucher.chequeDate.slice(0, 10) : '');
+  const [presentOn, setPresentOn] = useState(voucher?.presentOn ? voucher.presentOn.slice(0, 10) : '');
+  const [clearedOn, setClearedOn] = useState(voucher?.clearedOn ? voucher.clearedOn.slice(0, 10) : '');
+  const [accountPayee, setAccountPayee] = useState(voucher ? !!voucher.accountPayee : true);
+  const [printCheque, setPrintCheque] = useState(!!voucher?.printCheque);
+  const [againstType, setAgainstType] = useState(voucher?.againstType || 'Bill');
+  const [issuedTo, setIssuedTo] = useState(voucher?.issuedTo || '');
+  const [narration, setNarration] = useState(voucher?.narration || '');
+  const [currency, setCurrency] = useState(voucher?.currency || 'AED');
+  const [allocations, setAllocations] = useState<AllocationRow[]>(() => allocationsFromVoucher(voucher));
+
+  // Job / Order link (legacy "Job No" field). When set, the open-bills
+  // query narrows to invoices on this order so the user only sees bills
+  // for the selected job.
+  const [orderId, setOrderId] = useState(voucher?.orderId || '');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderSearchOpen, setOrderSearchOpen] = useState(false);
+  const [selectedOrderInfo, setSelectedOrderInfo] = useState<OrderPick | null>(
+    voucher?.order ? { id: voucher.order.id, orderNumber: voucher.order.orderNumber } : null,
+  );
+
+  // While editing, keep the saved allocations as long as the party hasn't
+  // been changed away from the original. Loading open-bills for the same
+  // party would otherwise wipe the user's saved lines.
+  const editAccountRef = useRef<string | null>(voucher?.accountId || null);
 
   const [partySearch, setPartySearch] = useState('');
   const [bankSearch, setBankSearch] = useState('');
@@ -157,20 +202,42 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
   });
   const salespersons: Salesperson[] = salespersonList?.data ?? [];
 
-  // Bill-allocation source switches by voucher type:
-  //  - supplier-side  -> /vouchers/open-purchases (Purchase Vouchers)
-  //  - customer-side  -> /vouchers/open-bills     (Invoices)
-  const billsEndpoint = isSupplierSide ? '/vouchers/open-purchases' : '/vouchers/open-bills';
-  const { data: openItemsData, isFetching: billsLoading } = useQuery({
-    queryKey: [isSupplierSide ? 'voucher-open-purchases' : 'voucher-open-bills', accountId],
-    enabled: !!accountId,
-    queryFn: () => api.get(`${billsEndpoint}?accountId=${accountId}`).then((r) => r.data),
+  // Order picker — search-as-you-type on order number / city.
+  const { data: orderSearchData } = useQuery({
+    queryKey: ['voucher-order-search', orderSearch],
+    enabled: orderSearch.trim().length >= 2,
+    queryFn: () => api.get(`/orders?limit=15&search=${encodeURIComponent(orderSearch.trim())}`)
+      .then((r) => r.data).catch(() => ({ data: [] })),
   });
-  const openItems: OpenItem[] = openItemsData?.data ?? [];
+  const orderResults: Order[] = orderSearchData?.data ?? [];
+
+  const { data: openBillsData, isFetching: billsFetching } = useQuery({
+    queryKey: ['voucher-open-bills', accountId, orderId],
+    enabled: !isSupplierSide && !!accountId,
+    queryFn: () => {
+      const params = new URLSearchParams({ accountId });
+      if (orderId) params.set('orderId', orderId);
+      return api.get(`/vouchers/open-bills?${params}`).then((r) => r.data);
+    },
+  });
+  const openBills: OpenBill[] = openBillsData?.data ?? [];
+
+  // Supplier-side: load the supplier's open Purchase Vouchers instead.
+  const { data: openPurchasesData, isFetching: purchasesFetching } = useQuery({
+    queryKey: ['voucher-open-purchases', accountId, orderId],
+    enabled: isSupplierSide && !!accountId,
+    queryFn: () => {
+      const params = new URLSearchParams({ accountId });
+      if (orderId) params.set('orderId', orderId);
+      return api.get(`/vouchers/open-purchases?${params}`).then((r) => r.data);
+    },
+  });
+  const openPurchases: OpenPurchase[] = openPurchasesData?.data ?? [];
+  const billsLoading = billsFetching || purchasesFetching;
 
   const { data: invoiceSearchData } = useQuery({
     queryKey: ['voucher-invoice-search', invoiceSearch],
-    enabled: !isSupplierSide && invoiceSearch.trim().length >= 2,
+    enabled: invoiceSearch.trim().length >= 2,
     queryFn: () =>
       api.get(`/invoices?limit=15&search=${encodeURIComponent(invoiceSearch.trim())}`)
         .then((r) => r.data)
@@ -187,22 +254,38 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
 
   useEffect(() => {
     if (!accountId) { setAllocations([]); return; }
-    setAllocations(openItems.map((b) => ({
-      // Supplier mode populates purchaseVoucherId; customer mode populates invoiceId.
-      invoiceId: isSupplierSide ? '' : b.id,
-      purchaseVoucherId: isSupplierSide ? b.id : '',
+    // Editing the original party — keep the saved allocations.
+    if (isEdit && accountId === editAccountRef.current) return;
+    if (isSupplierSide) {
+      setAllocations(openPurchases.map((p) => ({
+        invoiceId: '',
+        purchaseVoucherId: p.id,
+        jobNo: p.jobNo || '',
+        refNo: p.refNo || '',
+        invoiceNumber: p.voucherNumber,
+        invoiceDate: p.voucherDate?.slice(0, 10) || '',
+        billAmount: p.balance,
+        allocatedAmount: 0,
+        selected: false,
+        isCustom: false,
+      })));
+      if (openPurchases.length > 0 && openPurchases[0].currency) setCurrency(openPurchases[0].currency);
+      return;
+    }
+    setAllocations(openBills.map((b) => ({
+      invoiceId: b.id,
+      purchaseVoucherId: '',
       jobNo: b.jobNo || '',
       refNo: b.refNo || '',
-      invoiceNumber: (isSupplierSide ? b.voucherNumber : b.invoiceNumber) || '',
-      invoiceDate: ((isSupplierSide ? b.voucherDate : b.invoiceDate) || '').slice(0, 10),
+      invoiceNumber: b.invoiceNumber,
+      invoiceDate: b.invoiceDate?.slice(0, 10) || '',
       billAmount: b.balance,
       allocatedAmount: 0,
       selected: false,
       isCustom: false,
     })));
-    if (openItems.length > 0 && openItems[0].currency) setCurrency(openItems[0].currency);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountId, openItems]);
+    if (openBills.length > 0 && openBills[0].currency) setCurrency(openBills[0].currency);
+  }, [accountId, openBills, openPurchases, isSupplierSide, isEdit]);
 
   useEffect(() => {
     if (!accountId) return;
@@ -223,6 +306,20 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
     [allocations],
   );
 
+  const pickOrder = (o: Order) => {
+    setOrderId(o.id);
+    setSelectedOrderInfo({
+      id: o.id, orderNumber: o.orderNumber,
+      pickupCity: o.pickupCity, deliveryCity: o.deliveryCity,
+    });
+    setOrderSearch('');
+    setOrderSearchOpen(false);
+  };
+  const clearOrder = () => {
+    setOrderId('');
+    setSelectedOrderInfo(null);
+  };
+
   const toggleAllocation = (idx: number) => {
     setAllocations((rows) => rows.map((r, i) => {
       if (i !== idx) return r;
@@ -237,13 +334,30 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
       ? { ...r, allocatedAmount: value, selected: value !== 0 || r.selected }
       : r));
   };
+  // "Auto-mark all bills" — tick every row and allocate its full balance.
+  // Matches the "Auto Mark Invs" checkbox in the legacy receipt-voucher
+  // screen. Custom (advance) rows with no balance get selected but their
+  // typed amount is preserved.
+  const autoMarkAll = () => {
+    setAllocations((rows) => rows.map((r) => ({
+      ...r,
+      selected: true,
+      allocatedAmount: r.billAmount !== 0 ? r.billAmount : r.allocatedAmount,
+    })));
+  };
+  // Symmetric "Clear" — untick every row and zero its allocation.
+  const clearAllAllocations = () => {
+    setAllocations((rows) => rows.map((r) => ({
+      ...r,
+      selected: false,
+      allocatedAmount: 0,
+    })));
+  };
   const addCustomRow = () => {
     setAllocations((rows) => [
       ...rows,
       {
-        invoiceId: '',
-        purchaseVoucherId: '',
-        jobNo: '', refNo: 'Adv.', invoiceNumber: '',
+        invoiceId: '', purchaseVoucherId: '', jobNo: '', refNo: 'Adv.', invoiceNumber: '',
         invoiceDate: voucherDate, billAmount: 0, allocatedAmount: 0,
         selected: true, isCustom: true,
       },
@@ -295,7 +409,8 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         voucherDate,
         amount,
         currency,
-        referenceType: 'NONE',
+        referenceType: orderId ? 'ORDER' : 'NONE',
+        orderId: orderId || undefined,
         accountId,
         bankAccountId: bankAccountId || undefined,
         collectedRepId: collectedRepId || undefined,
@@ -321,7 +436,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         })),
       };
 
-      const res = await api.post('/vouchers', payload);
+      const res = isEdit
+        ? await api.put(`/vouchers/${voucher!.id}`, payload)
+        : await api.post('/vouchers', payload);
       onSuccess(res.data.data);
       onClose();
     } catch (err: unknown) {
@@ -337,11 +454,6 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
 
   const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy';
   const labelCls = 'block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1';
-  const billColLabel = isSupplierSide ? 'Purchase Voucher #' : 'Inv. No.';
-  const billListTitle = isSupplierSide ? 'Bill Allocation · Open Purchase Vouchers' : 'Bill Allocation';
-  const emptyHint = isSupplierSide
-    ? 'No open purchase vouchers for this supplier.'
-    : 'No open bills for this party. Use "Find & Add Invoice" above to add a specific invoice.';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -350,7 +462,10 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">{VOUCHER_TYPE_LABEL[type]}</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              {isEdit ? `Edit ${VOUCHER_TYPE_LABEL[type]}` : VOUCHER_TYPE_LABEL[type]}
+              {isEdit && voucher?.voucherNumber ? <span className="ml-2 text-sm font-mono text-slate-400">{voucher.voucherNumber}</span> : null}
+            </h2>
             <p className="text-xs text-slate-400 mt-0.5">{copy.subtitle}</p>
           </div>
           <button type="button" onClick={onClose}
@@ -360,6 +475,53 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {/* JOB NO — links the voucher to an Order. When set, the Bill
+              Allocation list below filters to that order's invoices. */}
+          <div className="relative">
+            <label className={labelCls}>Job No <span className="text-slate-400 normal-case font-normal">— link this voucher to an order (optional)</span></label>
+            <div className="relative">
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input value={orderSearch}
+                onChange={(e) => { setOrderSearch(e.target.value); setOrderSearchOpen(true); }}
+                onFocus={() => setOrderSearchOpen(true)}
+                placeholder={selectedOrderInfo ? selectedOrderInfo.orderNumber : 'Type job / order number to search…'}
+                className={`${inputCls} pl-8`} />
+              {orderSearchOpen && orderSearch.trim().length >= 2 && (
+                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  {orderResults.length === 0 ? (
+                    <div className="p-2 text-xs text-slate-400">No matching jobs.</div>
+                  ) : orderResults.map((o) => (
+                    <button key={o.id} type="button" onClick={() => pickOrder(o)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-mono font-semibold text-brand-navy truncate">{o.orderNumber}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          {o.pickupCity || '—'} → {o.deliveryCity || '—'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">{o.status}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedOrderInfo && (
+              <div className="mt-2 px-3 py-2 bg-brand-navy/5 border border-brand-navy/10 rounded-lg flex items-center justify-between text-sm">
+                <div className="min-w-0">
+                  <div className="font-mono font-semibold text-brand-navy truncate">JOB {selectedOrderInfo.orderNumber}</div>
+                  {(selectedOrderInfo.pickupCity || selectedOrderInfo.deliveryCity) && (
+                    <div className="text-xs text-slate-500 truncate">
+                      {selectedOrderInfo.pickupCity || '—'} → {selectedOrderInfo.deliveryCity || '—'}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-emerald-700 mt-0.5">Bill list filtered to this job's invoices.</div>
+                </div>
+                <button type="button" onClick={clearOrder}
+                  className="text-xs text-slate-400 hover:text-rose-600">Clear</button>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className={labelCls}>Date</label>
@@ -543,49 +705,60 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
               placeholder="e.g. GIVEN TO GSM" className={`${inputCls} resize-none`} />
           </div>
 
-          {/* Invoice search only useful on the customer-side flow.
-              Supplier-side gets its bills from open Purchase Vouchers. */}
           {!isSupplierSide && (
+          <div className="relative">
+            <label className={labelCls}>Find &amp; Add Invoice</label>
             <div className="relative">
-              <label className={labelCls}>Find &amp; Add Invoice</label>
-              <div className="relative">
-                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <input value={invoiceSearch}
-                  onChange={(e) => { setInvoiceSearch(e.target.value); setInvoiceSearchOpen(true); }}
-                  onFocus={() => setInvoiceSearchOpen(true)}
-                  placeholder="Type invoice number or customer to add a specific invoice…"
-                  className={`${inputCls} pl-8`} />
-                {invoiceSearchOpen && invoiceSearch.trim().length >= 2 && (
-                  <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
-                    {invoiceResults.length === 0 ? (
-                      <div className="p-2 text-xs text-slate-400">No invoices match.</div>
-                    ) : invoiceResults.map((inv) => (
-                      <button key={inv.id} type="button" onClick={() => addInvoiceFromSearch(inv)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-semibold text-brand-navy truncate">{inv.invoiceNumber}</div>
-                          <div className="text-xs text-slate-500 truncate">{inv.billToName}</div>
-                        </div>
-                        <div className="text-right text-xs flex-shrink-0">
-                          <div className="font-semibold text-slate-800">{inv.currency} {inv.total.toFixed(2)}</div>
-                          <div className="text-slate-400">{inv.status}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input value={invoiceSearch}
+                onChange={(e) => { setInvoiceSearch(e.target.value); setInvoiceSearchOpen(true); }}
+                onFocus={() => setInvoiceSearchOpen(true)}
+                placeholder="Type invoice number or customer to add a specific invoice…"
+                className={`${inputCls} pl-8`} />
+              {invoiceSearchOpen && invoiceSearch.trim().length >= 2 && (
+                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  {invoiceResults.length === 0 ? (
+                    <div className="p-2 text-xs text-slate-400">No invoices match.</div>
+                  ) : invoiceResults.map((inv) => (
+                    <button key={inv.id} type="button" onClick={() => addInvoiceFromSearch(inv)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-brand-navy truncate">{inv.invoiceNumber}</div>
+                        <div className="text-xs text-slate-500 truncate">{inv.billToName}</div>
+                      </div>
+                      <div className="text-right text-xs flex-shrink-0">
+                        <div className="font-semibold text-slate-800">{inv.currency} {inv.total.toFixed(2)}</div>
+                        <div className="text-slate-400">{inv.status}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
           )}
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                {billListTitle} {accountId ? `· ${allocations.length} loaded` : ''}
+                {isSupplierSide ? 'Purchase Voucher Allocation' : 'Bill Allocation'} {accountId ? `· ${allocations.length} loaded` : ''}
+                {selectedOrderInfo ? <span className="ml-1 text-brand-navy">· filtered to JOB {selectedOrderInfo.orderNumber}</span> : null}
                 {billsLoading && <Loader2 className="w-3 h-3 animate-spin inline-block ml-1" />}
               </p>
-              <button type="button" onClick={addCustomRow}
-                className="text-xs font-semibold text-brand-navy hover:underline">+ Add advance / manual line</button>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <button type="button" onClick={autoMarkAll}
+                  disabled={allocations.length === 0}
+                  className="text-emerald-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                  ✓ Auto-mark all
+                </button>
+                <button type="button" onClick={clearAllAllocations}
+                  disabled={allocations.length === 0}
+                  className="text-slate-500 hover:text-rose-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                  Clear
+                </button>
+                <button type="button" onClick={addCustomRow}
+                  className="text-brand-navy hover:underline">+ Add advance / manual line</button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -594,7 +767,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                     <th className="px-2 py-2 w-8"></th>
                     <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">Job No</th>
                     <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">Ref</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">{billColLabel}</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">{isSupplierSide ? 'Voucher No.' : 'Inv. No.'}</th>
                     <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase">Date</th>
                     <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">Amount</th>
                     <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase">{copy.allocColLabel}</th>
@@ -605,13 +778,23 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
                 <tbody className="divide-y divide-slate-100">
                   {allocations.length === 0 && (
                     <tr><td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
-                      {accountId ? emptyHint : `${copy.emptyHint}`}
+                      {isSupplierSide
+                        ? (accountId
+                            ? (selectedOrderInfo
+                                ? `No open Purchase Vouchers on JOB ${selectedOrderInfo.orderNumber} for this supplier. Clear the Job filter, or add an advance line below.`
+                                : 'No open Purchase Vouchers for this supplier. Record the supplier bill as a Purchase Voucher first, or add an advance line below.')
+                            : copy.emptyHint)
+                        : (accountId
+                            ? (selectedOrderInfo
+                                ? `No open bills on JOB ${selectedOrderInfo.orderNumber} for this party. Clear the Job filter or use "Find & Add Invoice" above.`
+                                : 'No open bills for this party. Use "Find & Add Invoice" above to add a specific invoice.')
+                            : `${copy.emptyHint} Or use "Find & Add Invoice" above.`)}
                     </td></tr>
                   )}
                   {allocations.map((row, idx) => {
                     const balance = row.billAmount - row.allocatedAmount;
                     return (
-                      <tr key={`${row.invoiceId || row.purchaseVoucherId || 'custom'}-${idx}`}
+                      <tr key={`${row.invoiceId || 'custom'}-${idx}`}
                         className={row.selected ? 'bg-emerald-50/40' : 'hover:bg-slate-50'}>
                         <td className="px-2 py-1.5 text-center">
                           <input type="checkbox" checked={row.selected} onChange={() => toggleAllocation(idx)} />
@@ -686,7 +869,9 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">Voucher number auto-generated on save</div>
+          <div className="text-xs text-slate-500">
+            {isEdit ? 'Editing — changes reflect in reports & SOA on save' : 'Voucher number auto-generated on save'}
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
@@ -695,7 +880,7 @@ export function SupplierPaymentVoucherModal({ type, onClose, onSuccess }: Props)
             <button type="submit" disabled={submitting || !accountId || totalAllocated <= 0}
               className="flex items-center gap-2 px-5 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              {copy.saveCta}
+              {isEdit ? 'Update Voucher' : copy.saveCta}
             </button>
           </div>
         </div>
