@@ -26,6 +26,7 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
   const cfg = STATUS_CONFIG[quotation.status];
   const [downloadingWord, setDownloadingWord] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingProforma, setDownloadingProforma] = useState(false);
 
   const handleDownloadWord = async () => {
     setDownloadingWord(true);
@@ -55,6 +56,23 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
     }
   };
 
+  // Renders the quotation through the Nexora invoice template with the
+  // banner swapped to "PROFORMA INVOICE" — same header, items, totals
+  // and bank panel as a tax invoice, ready to send for payment.
+  const handleDownloadProforma = async () => {
+    setDownloadingProforma(true);
+    try {
+      await downloadDocx(
+        `/quotations/${quotation.id}/download/proforma`,
+        `PI-${quotation.quotationNumber}.pdf`,
+      );
+    } catch {
+      alert('Failed to download Proforma Invoice.');
+    } finally {
+      setDownloadingProforma(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -68,6 +86,12 @@ function QuotationDetailModal({ quotation, onClose }: { quotation: Quotation; on
             <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(quotation.quotationDate)}</p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={handleDownloadProforma} disabled={downloadingProforma}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-emerald-700 rounded-xl hover:bg-emerald-700/90 disabled:opacity-50"
+              title="Generate Proforma Invoice in Nexora template">
+              {downloadingProforma ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
+              Proforma
+            </button>
             <button onClick={handleDownloadPdf} disabled={downloadingPdf}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy rounded-xl hover:bg-brand-navy/90 disabled:opacity-50">
               {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileType className="w-4 h-4" />}
