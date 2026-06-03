@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, Package, Users, UserCog } from 'lucide-react';
+import { X, Loader2, Package, Users, UserCog, Search, ChevronDown } from 'lucide-react';
 import api from '@/lib/api';
 import { Account, ItemMaster, Salesperson } from '@/types';
 
@@ -83,6 +83,143 @@ function inferCountryCode(text: string): string | null {
 }
 
 type FormData = z.infer<typeof schema>;
+
+// Generic searchable picker for the Account / Customer master dropdowns.
+// Replaces the native <select> so the user can type to filter rather
+// than scrolling through hundreds of entries (the masters can grow to
+// 19+ rows already as visible in the New Shipping Order screenshot).
+type PickerOption = {
+  id: string;
+  code: string;
+  name: string;
+  /** Optional contact line shown beneath the name (phone, TRN, etc.). */
+  hint?: string | null;
+};
+
+function SearchablePicker({
+  value,
+  options,
+  placeholder,
+  emptyHint,
+  onChange,
+}: {
+  value: string;
+  options: PickerOption[];
+  placeholder: string;
+  emptyHint: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside-click so the user can dismiss the panel without
+  // having to make a selection.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      // Defer focus so the input mounts before we grab it.
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const needle = query.trim().toLowerCase();
+  const filtered = needle
+    ? options.filter((o) =>
+        o.code.toLowerCase().includes(needle) ||
+        o.name.toLowerCase().includes(needle) ||
+        (o.hint || '').toLowerCase().includes(needle),
+      )
+    : options;
+
+  const selected = options.find((o) => o.id === value) || null;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="form-input text-left flex items-center justify-between gap-2"
+      >
+        <span className="truncate">
+          {selected ? (
+            <>
+              <span className="font-semibold text-brand-navy">{selected.code}</span>
+              <span className="text-slate-700"> · {selected.name}</span>
+              {selected.hint ? <span className="text-xs text-slate-400"> · {selected.hint}</span> : null}
+            </>
+          ) : (
+            <span className="text-slate-400">{placeholder}</span>
+          )}
+        </span>
+        <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg">
+          <div className="relative p-2 border-b border-slate-100">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search code, name, phone…"
+              className="w-full pl-7 pr-2 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {options.length === 0 ? (
+              <div className="p-3 text-xs text-slate-400">{emptyHint}</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-3 text-xs text-slate-400">No matches.</div>
+            ) : (
+              <>
+                {value && (
+                  <button
+                    type="button"
+                    onClick={() => { onChange(''); setOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 border-b border-slate-100"
+                  >
+                    Clear selection
+                  </button>
+                )}
+                {filtered.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => { onChange(o.id); setOpen(false); }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 ${o.id === value ? 'bg-brand-navy/10' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="font-semibold text-brand-navy">{o.code}</span>
+                        <span className="text-slate-700"> · {o.name}</span>
+                      </span>
+                      {o.hint ? (
+                        <span className="text-[11px] text-slate-400 flex-shrink-0">{o.hint}</span>
+                      ) : null}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   onClose: () => void;
@@ -231,39 +368,33 @@ export function NewOrderModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="form-label">Account Master</label>
-                  <select
+                  <SearchablePicker
                     value={selectedAccountId}
-                    onChange={(e) => handleAccountSelect(e.target.value)}
-                    className="form-input"
-                  >
-                    <option value="">— Select account —</option>
-                    {(accounts ?? []).map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.code} · {a.name}{a.mobile1 ? ` · ${a.mobile1}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {(accounts ?? []).length === 0 && (
-                    <p className="text-xs text-slate-400 mt-1">No accounts yet — add one in Account Master.</p>
-                  )}
+                    options={(accounts ?? []).map((a) => ({
+                      id: a.id,
+                      code: a.code,
+                      name: a.name,
+                      hint: a.mobile1 || null,
+                    }))}
+                    placeholder="— Select account —"
+                    emptyHint="No accounts yet — add one in Account Master."
+                    onChange={handleAccountSelect}
+                  />
                 </div>
                 <div>
                   <label className="form-label">Customer Master</label>
-                  <select
+                  <SearchablePicker
                     value={selectedItemId}
-                    onChange={(e) => handleItemSelect(e.target.value)}
-                    className="form-input"
-                  >
-                    <option value="">— Select customer —</option>
-                    {(items ?? []).map((it) => (
-                      <option key={it.id} value={it.id}>
-                        {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {(items ?? []).length === 0 && (
-                    <p className="text-xs text-slate-400 mt-1">No customers yet — add one in Customer Master.</p>
-                  )}
+                    options={(items ?? []).map((it) => ({
+                      id: it.id,
+                      code: it.code,
+                      name: it.name,
+                      hint: it.phone || null,
+                    }))}
+                    placeholder="— Select customer —"
+                    emptyHint="No customers yet — add one in Customer Master."
+                    onChange={handleItemSelect}
+                  />
                 </div>
               </div>
               <p className="text-xs text-slate-500 mt-2">
