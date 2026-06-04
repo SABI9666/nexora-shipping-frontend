@@ -252,10 +252,36 @@ export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess 
     }
   }, [banks, bankAccountId]);
 
+  // Tracks which "source" (supplier-side flag + accountId) the current
+  // allocations were seeded from. We re-seed only when this key changes —
+  // not on every React Query refetch — so the user's checkbox ticks and
+  // amount edits aren't wiped by a background refresh.
+  const allocSourceRef = useRef<string>('');
+
   useEffect(() => {
-    if (!accountId) { setAllocations([]); return; }
+    if (!accountId) {
+      setAllocations([]);
+      allocSourceRef.current = '';
+      return;
+    }
     // Editing the original party — keep the saved allocations.
     if (isEdit && accountId === editAccountRef.current) return;
+
+    const source = `${isSupplierSide ? 'P' : 'B'}:${accountId}`;
+    if (source === allocSourceRef.current) return;
+
+    // Wait until the relevant query has actually resolved (defined data
+    // payload) before seeding — otherwise the initial render fires the
+    // effect with an empty array and we'd never recover after the data
+    // arrives because we'd have marked the source as seeded.
+    const ready = isSupplierSide
+      ? openPurchasesData !== undefined
+      : openBillsData !== undefined;
+    if (!ready) {
+      setAllocations([]); // clear any rows left over from the previous party
+      return;
+    }
+
     if (isSupplierSide) {
       setAllocations(openPurchases.map((p) => ({
         invoiceId: '',
@@ -270,22 +296,23 @@ export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess 
         isCustom: false,
       })));
       if (openPurchases.length > 0 && openPurchases[0].currency) setCurrency(openPurchases[0].currency);
-      return;
+    } else {
+      setAllocations(openBills.map((b) => ({
+        invoiceId: b.id,
+        purchaseVoucherId: '',
+        jobNo: b.jobNo || '',
+        refNo: b.refNo || '',
+        invoiceNumber: b.invoiceNumber,
+        invoiceDate: b.invoiceDate?.slice(0, 10) || '',
+        billAmount: b.balance,
+        allocatedAmount: 0,
+        selected: false,
+        isCustom: false,
+      })));
+      if (openBills.length > 0 && openBills[0].currency) setCurrency(openBills[0].currency);
     }
-    setAllocations(openBills.map((b) => ({
-      invoiceId: b.id,
-      purchaseVoucherId: '',
-      jobNo: b.jobNo || '',
-      refNo: b.refNo || '',
-      invoiceNumber: b.invoiceNumber,
-      invoiceDate: b.invoiceDate?.slice(0, 10) || '',
-      billAmount: b.balance,
-      allocatedAmount: 0,
-      selected: false,
-      isCustom: false,
-    })));
-    if (openBills.length > 0 && openBills[0].currency) setCurrency(openBills[0].currency);
-  }, [accountId, openBills, openPurchases, isSupplierSide, isEdit]);
+    allocSourceRef.current = source;
+  }, [accountId, openBills, openPurchases, openBillsData, openPurchasesData, isSupplierSide, isEdit]);
 
   useEffect(() => {
     if (!accountId) return;
