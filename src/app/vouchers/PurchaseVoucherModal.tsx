@@ -52,7 +52,27 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
   );
   const [currency, setCurrency] = useState(voucher?.currency || 'AED');
   const [exRate, setExRate] = useState(1);
-  const [amount, setAmount] = useState<number | ''>(voucher?.amount ?? '');
+  // Tax-aware amount block. Net is the VAT-exclusive line; Input VAT is
+  // recoverable VAT on the purchase; Output VAT is the self-assessed VAT
+  // a reverse-charge / RCM purchase carries. Gross = Net + Input VAT and
+  // is what gets booked as the voucher amount.
+  type EditableVoucher = NonNullable<Props['voucher']> & {
+    netAmount?: number;
+    inputVatPercent?: number;
+    inputVatAmount?: number;
+    outputVatPercent?: number;
+    outputVatAmount?: number;
+  };
+  const v = voucher as EditableVoucher | undefined;
+  const [netAmount, setNetAmount] = useState<number | ''>(
+    v?.netAmount ?? v?.amount ?? '',
+  );
+  const [inputVatPercent, setInputVatPercent] = useState<number>(
+    v?.inputVatPercent ?? 5,
+  );
+  const [outputVatPercent, setOutputVatPercent] = useState<number>(
+    v?.outputVatPercent ?? 0,
+  );
   const [narration, setNarration] = useState(voucher?.narration || '');
 
   const [partySearch, setPartySearch] = useState('');
@@ -96,24 +116,37 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
     setSelectedOrderInfo(null);
   };
 
-  const computedAmount = (Number(amount) || 0) * (exRate || 1);
+  // Live tax breakdown. Percent is the source of truth; amounts derive.
+  const net = Number(netAmount) || 0;
+  const inputVatAmount = Math.round((net * (inputVatPercent || 0) / 100) * 100) / 100;
+  const outputVatAmount = Math.round((net * (outputVatPercent || 0) / 100) * 100) / 100;
+  const grossAmount = Math.round((net + inputVatAmount) * 100) / 100;
+  const baseGross = grossAmount * (exRate || 1);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!orderId) { setError('Select a Job.'); return; }
     if (!accountId) { setError('Select a supplier.'); return; }
-    const amt = Number(amount) || 0;
-    if (amt <= 0) { setError('Enter a positive amount.'); return; }
+    if (net <= 0) { setError('Enter a positive net amount.'); return; }
 
     setSubmitting(true);
     try {
-      const baseAmount = amt * (exRate || 1);
+      const baseNet = net * (exRate || 1);
+      const baseInputVat = inputVatAmount * (exRate || 1);
+      const baseOutputVat = outputVatAmount * (exRate || 1);
       const payload = {
         type: 'PURCHASE',
         direction: 'DEBIT',
         voucherDate,
-        amount: baseAmount,
+        // amount is the gross booking value (net + input VAT) so existing
+        // ledger / report queries pick up the full payable.
+        amount: baseGross,
+        netAmount: baseNet,
+        inputVatPercent,
+        inputVatAmount: baseInputVat,
+        outputVatPercent,
+        outputVatAmount: baseOutputVat,
         currency,
         referenceType: 'ORDER',
         orderId,
@@ -125,8 +158,8 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
           refNo: supInvNo || undefined,
           invoiceNumber: supInvNo || undefined,
           invoiceDate: supInvDate ? new Date(`${supInvDate}T00:00:00.000Z`).toISOString() : undefined,
-          billAmount: baseAmount,
-          allocatedAmount: baseAmount,
+          billAmount: baseGross,
+          allocatedAmount: baseGross,
         }],
       };
 
@@ -288,9 +321,9 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className={labelCls}>Inv Amount <span className="text-rose-500">*</span></label>
-              <input type="number" step="0.01" value={amount}
-                onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+              <label className={labelCls}>Net Amount <span className="text-rose-500">*</span> <span className="text-slate-400 normal-case font-normal">— excl. VAT</span></label>
+              <input type="number" step="0.01" value={netAmount}
+                onChange={(e) => setNetAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
                 placeholder="0.00" className={inputCls} />
             </div>
             <div>
@@ -312,11 +345,90 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          <div className="bg-brand-navy/5 border border-brand-navy/10 rounded-lg px-3 py-2.5 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase">Amount (base)</span>
-            <span className="text-base font-bold text-brand-navy">
-              {currency} {computedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+          {/* TAX BLOCK — Input + Output VAT for the supplier bill.
+              Input VAT is the recoverable VAT the supplier charged you;
+              Output VAT only applies to reverse-charge / import-of-service
+              entries where you must self-account for VAT (defaults to 0). */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Input VAT % <span className="text-slate-400 normal-case font-normal">— recoverable</span>
+                  </label>
+                  <span className="text-[11px] font-mono text-emerald-700">
+                    +{currency} {inputVatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {[0, 5].map((p) => (
+                    <button key={p} type="button"
+                      onClick={() => setInputVatPercent(p)}
+                      className={`flex-shrink-0 px-2 py-1 text-xs rounded border ${inputVatPercent === p ? 'bg-brand-navy text-white border-brand-navy' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                      {p}%
+                    </button>
+                  ))}
+                  <input type="number" step="0.01" min={0} max={100} value={inputVatPercent}
+                    onChange={(e) => setInputVatPercent(parseFloat(e.target.value) || 0)}
+                    className={`${inputCls} text-right`} />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Output VAT % <span className="text-slate-400 normal-case font-normal">— reverse charge</span>
+                  </label>
+                  <span className="text-[11px] font-mono text-rose-700">
+                    {currency} {outputVatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {[0, 5].map((p) => (
+                    <button key={p} type="button"
+                      onClick={() => setOutputVatPercent(p)}
+                      className={`flex-shrink-0 px-2 py-1 text-xs rounded border ${outputVatPercent === p ? 'bg-brand-navy text-white border-brand-navy' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                      {p}%
+                    </button>
+                  ))}
+                  <input type="number" step="0.01" min={0} max={100} value={outputVatPercent}
+                    onChange={(e) => setOutputVatPercent(parseFloat(e.target.value) || 0)}
+                    className={`${inputCls} text-right`} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* GROSS BREAKDOWN — Net + Input VAT = Gross (booking value).
+              Ex-rate × Gross gives the AED-equivalent total shown on the
+              right so the user sees both the supplier-currency invoice
+              and the base-currency posting at a glance. */}
+          <div className="bg-brand-navy/5 border border-brand-navy/10 rounded-xl px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span>Net Amount</span>
+              <span className="font-mono">{currency} {net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-emerald-700">
+              <span>+ Input VAT ({inputVatPercent}%)</span>
+              <span className="font-mono">{currency} {inputVatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            {outputVatAmount > 0 && (
+              <div className="flex items-center justify-between text-xs text-rose-700">
+                <span>Output VAT ({outputVatPercent}%) — self-assessed</span>
+                <span className="font-mono">{currency} {outputVatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            <div className="border-t border-brand-navy/15 pt-1.5 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Gross Total</span>
+              <span className="text-base font-bold text-brand-navy font-mono">
+                {currency} {grossAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            {(exRate || 1) !== 1 && (
+              <div className="flex items-center justify-between text-[11px] text-slate-500 italic">
+                <span>≈ in base @ {exRate}</span>
+                <span className="font-mono">AED {baseGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -343,7 +455,7 @@ export function PurchaseVoucherModal({ voucher, onClose, onSuccess }: Props) {
               Close (Esc)
             </button>
             <button type="submit"
-              disabled={submitting || !orderId || !accountId || !(Number(amount) > 0)}
+              disabled={submitting || !orderId || !accountId || !(net > 0)}
               className="flex items-center gap-2 px-5 py-2 bg-brand-navy text-white rounded-xl text-sm font-semibold hover:bg-brand-navy/90 disabled:opacity-50">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
               {isEdit ? 'Update' : 'Save (F12)'}
