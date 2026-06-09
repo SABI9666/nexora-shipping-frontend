@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { COUNTRIES, inferCountryCode, normalizeCountryCode } from '@/lib/countries';
 import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount, Invoice, Account } from '@/types';
 import {
-  Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp,
+  Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp, Search,
 } from 'lucide-react';
 
 const CURRENCIES: InvoiceCurrency[] = ['AED', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'SAR'];
@@ -417,6 +417,41 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
 
   const selectedAccount = accounts.find((a) => a.id === form.accountId) || null;
 
+  // Inline searchable picker for the Customer Account dropdown — the
+  // master can grow to dozens of entries and scrolling a native <select>
+  // is painful. Click to open, type to filter on code / name / mobile,
+  // click outside to dismiss.
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
+  const accountPickerRef = useRef<HTMLDivElement | null>(null);
+  const accountSearchInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!accountPickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (accountPickerRef.current && !accountPickerRef.current.contains(e.target as Node)) {
+        setAccountPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [accountPickerOpen]);
+  useEffect(() => {
+    if (accountPickerOpen) {
+      setAccountSearch('');
+      setTimeout(() => accountSearchInputRef.current?.focus(), 0);
+    }
+  }, [accountPickerOpen]);
+  const filteredAccounts = useMemo(() => {
+    const q = accountSearch.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter((a) =>
+      a.code.toLowerCase().includes(q) ||
+      a.name.toLowerCase().includes(q) ||
+      (a.mobile1 || '').toLowerCase().includes(q) ||
+      (a.accountGroup?.name || '').toLowerCase().includes(q),
+    );
+  }, [accounts, accountSearch]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -450,14 +485,69 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
                   className="text-[11px] text-slate-400 hover:text-rose-600">Clear</button>
               )}
             </div>
-            <select value={form.accountId} onChange={(e) => applyAccount(e.target.value)} className={inputCls}>
-              <option value="">— No account linked (legacy mode) —</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.code} · {a.name}{a.accountGroup ? ` · ${a.accountGroup.name}` : ''}
-                </option>
-              ))}
-            </select>
+            <div ref={accountPickerRef} className="relative">
+              <button type="button"
+                onClick={() => setAccountPickerOpen((v) => !v)}
+                className={`${inputCls} text-left flex items-center justify-between gap-2`}>
+                <span className="truncate">
+                  {selectedAccount ? (
+                    <>
+                      <span className="font-semibold text-brand-navy">{selectedAccount.code}</span>
+                      <span className="text-slate-700"> · {selectedAccount.name}</span>
+                      {selectedAccount.accountGroup ? (
+                        <span className="text-xs text-slate-400"> · {selectedAccount.accountGroup.name}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-slate-400">— No account linked (legacy mode) —</span>
+                  )}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              </button>
+              {accountPickerOpen && (
+                <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg">
+                  <div className="relative p-2 border-b border-slate-100">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      ref={accountSearchInputRef}
+                      value={accountSearch}
+                      onChange={(e) => setAccountSearch(e.target.value)}
+                      placeholder="Search code, name, group, mobile…"
+                      className="w-full pl-7 pr-2 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    <button type="button"
+                      onClick={() => { applyAccount(''); setAccountPickerOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 border-b border-slate-100 italic">
+                      — No account linked (legacy mode) —
+                    </button>
+                    {filteredAccounts.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-400">No accounts match.</div>
+                    ) : (
+                      filteredAccounts.map((a) => (
+                        <button key={a.id} type="button"
+                          onClick={() => { applyAccount(a.id); setAccountPickerOpen(false); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5 ${a.id === form.accountId ? 'bg-brand-navy/10' : ''}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="font-semibold text-brand-navy">{a.code}</span>
+                              <span className="text-slate-700"> · {a.name}</span>
+                            </span>
+                            {a.accountGroup ? (
+                              <span className="text-[11px] text-slate-400 flex-shrink-0">{a.accountGroup.name}</span>
+                            ) : null}
+                          </div>
+                          {a.mobile1 ? (
+                            <div className="text-[11px] text-slate-400 mt-0.5">{a.mobile1}</div>
+                          ) : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             {selectedAccount && (
               <p className="text-[11px] text-slate-500 mt-1">
                 Bill-to fields auto-filled from <span className="font-semibold text-brand-navy">{selectedAccount.code} · {selectedAccount.name}</span>.
