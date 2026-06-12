@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, CheckCircle, AlertCircle, Search, Landmark, FileText, Briefcase } from 'lucide-react';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Voucher, VoucherType, Account, Salesperson, BankAccount, Order } from '@/types';
 import {
   VOUCHER_TYPE_LABEL,
@@ -663,12 +664,17 @@ export function SupplierPaymentVoucherModal({ type, voucher, onClose, onSuccess 
             </div>
             <div>
               <label className={labelCls}>Collected Rep</label>
-              <select value={collectedRepId} onChange={(e) => setCollectedRepId(e.target.value)} className={inputCls}>
-                <option value="">— None —</option>
-                {salespersons.map((s) => (
-                  <option key={s.id} value={s.id}>{s.code} · {s.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={collectedRepId}
+                onChange={setCollectedRepId}
+                placeholder="— None —"
+                clearLabel="— None —"
+                options={salespersons.map((s) => ({
+                  id: s.id,
+                  label: `${s.code} · ${s.name}`,
+                  sublabel: s.phone || null,
+                }))}
+              />
               {selectedRep && (
                 <p className="text-[11px] text-slate-500 mt-1">{selectedRep.phone || selectedRep.email || ''}</p>
               )}

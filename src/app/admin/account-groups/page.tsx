@@ -6,6 +6,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { AccountGroup, AccountGroupType, ItemMaster } from '@/types';
 import { Plus, Trash2, Pencil, X, AlertCircle, Loader2, Save, Sparkles } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 const GROUP_TYPES: { value: AccountGroupType; label: string }[] = [
   { value: 'ASSET', label: 'Asset' },
@@ -74,6 +75,7 @@ function EditorModal({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>(initial);
+  const [prefillItemId, setPrefillItemId] = useState('');
   const [error, setError] = useState('');
   const isEdit = !!form.id;
 
@@ -136,14 +138,15 @@ function EditorModal({
               <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-1 block">
                 Pre-fill from Customer Master
               </label>
-              <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
-                <option value="">— Select an item —</option>
-                {(items ?? []).map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.code} · {it.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={prefillItemId}
+                onChange={(id) => { setPrefillItemId(id); if (id) handleItemPrefill(id); }}
+                placeholder="— Select an item —"
+                options={(items ?? []).map((it) => ({
+                  id: it.id,
+                  label: `${it.code} · ${it.name}`,
+                }))}
+              />
               <p className="text-xs text-slate-500 mt-1">Copies code + name into the fields below.</p>
             </div>
           )}
