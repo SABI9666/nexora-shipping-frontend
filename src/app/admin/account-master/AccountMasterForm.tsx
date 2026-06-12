@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Account, AccountGroup, CustomerGroup, ItemMaster, Salesperson } from '@/types';
 import { Plus, X, AlertCircle, Loader2, Save, Phone, Mail } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 export interface AccountForm {
   id?: string;
@@ -131,6 +132,7 @@ export function AccountMasterForm({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<AccountForm>(initial);
+  const [prefillItemId, setPrefillItemId] = useState('');
   const [error, setError] = useState('');
   const isEdit = !!form.id;
 
@@ -286,14 +288,16 @@ export function AccountMasterForm({
               <label className="text-xs font-semibold text-brand-navy uppercase tracking-wider mb-2 block">
                 Pre-fill from Customer Master
               </label>
-              <select defaultValue="" onChange={(e) => handleItemPrefill(e.target.value)} className={inputCls}>
-                <option value="">— Select a customer —</option>
-                {(items ?? []).map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.code} · {it.name}{it.phone ? ` · ${it.phone}` : ''}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={prefillItemId}
+                onChange={(id) => { setPrefillItemId(id); if (id) handleItemPrefill(id); }}
+                placeholder="— Select a customer —"
+                options={(items ?? []).map((it) => ({
+                  id: it.id,
+                  label: `${it.code} · ${it.name}`,
+                  sublabel: it.phone || null,
+                }))}
+              />
               <p className="text-xs text-slate-500 mt-1">Copies code, name, and phone (into Mobile 1) into the fields below.</p>
             </div>
           )}
@@ -441,16 +445,17 @@ export function AccountMasterForm({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>REP (Primary)</label>
-                <select
+                <SearchableSelect
                   value={form.repId}
-                  onChange={(e) => handleRepSelect(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">— Select a salesperson —</option>
-                  {(salespersons ?? []).map((sp) => (
-                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
-                  ))}
-                </select>
+                  onChange={handleRepSelect}
+                  placeholder="— Select a salesperson —"
+                  clearLabel="— None —"
+                  options={(salespersons ?? []).map((sp) => ({
+                    id: sp.id,
+                    label: repOptionLabel(sp),
+                    search: sp.phone || '',
+                  }))}
+                />
                 {selectedRep && <SalespersonCard sp={selectedRep} />}
                 <input
                   value={form.rep}
@@ -461,16 +466,17 @@ export function AccountMasterForm({
               </div>
               <div>
                 <label className={labelCls}>REP 2 (Secondary)</label>
-                <select
+                <SearchableSelect
                   value={form.rep2Id}
-                  onChange={(e) => handleRep2Select(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">— Select a salesperson —</option>
-                  {(salespersons ?? []).map((sp) => (
-                    <option key={sp.id} value={sp.id}>{repOptionLabel(sp)}</option>
-                  ))}
-                </select>
+                  onChange={handleRep2Select}
+                  placeholder="— Select a salesperson —"
+                  clearLabel="— None —"
+                  options={(salespersons ?? []).map((sp) => ({
+                    id: sp.id,
+                    label: repOptionLabel(sp),
+                    search: sp.phone || '',
+                  }))}
+                />
                 {selectedRep2 && <SalespersonCard sp={selectedRep2} />}
                 <input
                   value={form.rep2}

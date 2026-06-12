@@ -10,6 +10,7 @@ import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Voucher, Account, Order } from '@/types';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, PAYMENT_METHOD_LABEL } from '@/app/vouchers/constants';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { ArrowLeft, Download, FileText, Loader2, Briefcase } from 'lucide-react';
 
 const REPORT_META: Record<string, { title: string; desc: string }> = {
@@ -363,13 +364,17 @@ export default function ReportDetailPage() {
             </div>
             <div className="min-w-[260px]">
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Account (optional)</label>
-              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-                <option value="">All accounts</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={accountId}
+                onChange={setAccountId}
+                placeholder="All accounts"
+                clearLabel="All accounts"
+                options={accounts.map((a) => ({
+                  id: a.id,
+                  label: `${a.code} · ${a.name}`,
+                  sublabel: a.accountGroup?.name || null,
+                }))}
+              />
             </div>
           </>
         )}
@@ -378,13 +383,16 @@ export default function ReportDetailPage() {
             <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">
               {reportType === 'customer-statement' ? 'Customer' : 'Account'}
             </label>
-            <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-              <option value="">Select {reportType === 'customer-statement' ? 'a customer' : 'an account'}…</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.code} · {a.name}{a.accountGroup ? ` · ${a.accountGroup.name}` : ''}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={accountId}
+              onChange={setAccountId}
+              placeholder={`Select ${reportType === 'customer-statement' ? 'a customer' : 'an account'}…`}
+              options={accounts.map((a) => ({
+                id: a.id,
+                label: `${a.code} · ${a.name}`,
+                sublabel: a.accountGroup?.name || null,
+              }))}
+            />
           </div>
         )}
         <button onClick={() => refetch()}

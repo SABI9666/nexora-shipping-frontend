@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { formatCurrency, formatDate, formatDateTime, formatFileSize, SHIPMENT_STATUS_CONFIG } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Order, Shipment, Document, OrderStatus, Salesperson } from '@/types';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 type OrderDetail = Omit<Order, 'shipment' | 'documents'> & {
   shipment?: Shipment;
@@ -129,21 +130,17 @@ function EditOrderModal({ order, onClose, onSuccess }: EditOrderModalProps) {
                 Manage Reps
               </a>
             </div>
-            <select
+            <SearchableSelect
               value={form.repId}
-              onChange={(e) => setForm(f => ({ ...f, repId: e.target.value }))}
-              className="form-input w-full"
-            >
-              <option value="">— No sales rep —</option>
-              {(salespersons ?? []).map((sp) => {
-                const extras = [sp.phone, sp.email].filter(Boolean).join(' · ');
-                return (
-                  <option key={sp.id} value={sp.id}>
-                    {sp.code} · {sp.name}{extras ? ` · ${extras}` : ''}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={(id) => setForm(f => ({ ...f, repId: id }))}
+              placeholder="— No sales rep —"
+              clearLabel="— No sales rep —"
+              options={(salespersons ?? []).map((sp) => ({
+                id: sp.id,
+                label: `${sp.code} · ${sp.name}`,
+                sublabel: [sp.phone, sp.email].filter(Boolean).join(' · ') || null,
+              }))}
+            />
             {selectedRep && (
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 <span className="font-semibold text-amber-800">{selectedRep.code} · {selectedRep.name}</span>

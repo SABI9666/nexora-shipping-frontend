@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { X, Upload, Loader2, FileText, ArrowUpRight, ArrowDownRight, Building2, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import {
   Voucher, VoucherType, VoucherDirection, VoucherReferenceType,
   Invoice, Order, VoucherReferenceValue, Account, AccountGroupType,
@@ -378,33 +379,29 @@ export function CreateVoucherModal({ voucher, onClose, onSuccess }: Props) {
             </div>
 
             {referenceType === 'INVOICE' && (
-              <select
+              <SearchableSelect
                 value={invoiceId}
-                onChange={(e) => setInvoiceId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20"
-              >
-                <option value="">Select an invoice…</option>
-                {invoices.map((inv) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.invoiceNumber} · {inv.billToName} · {formatCurrency(inv.total, inv.currency)}
-                  </option>
-                ))}
-              </select>
+                onChange={setInvoiceId}
+                placeholder="Select an invoice…"
+                options={invoices.map((inv) => ({
+                  id: inv.id,
+                  label: `${inv.invoiceNumber} · ${inv.billToName}`,
+                  sublabel: formatCurrency(inv.total, inv.currency),
+                }))}
+              />
             )}
 
             {referenceType === 'ORDER' && (
-              <select
+              <SearchableSelect
                 value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20"
-              >
-                <option value="">Select an order…</option>
-                {orders.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.orderNumber} · {o.deliveryCity || '—'} · {formatCurrency(o.price || 0)}
-                  </option>
-                ))}
-              </select>
+                onChange={setOrderId}
+                placeholder="Select an order…"
+                options={orders.map((o) => ({
+                  id: o.id,
+                  label: `${o.orderNumber} · ${o.deliveryCity || '—'}`,
+                  sublabel: formatCurrency(o.price || 0),
+                }))}
+              />
             )}
           </div>
 

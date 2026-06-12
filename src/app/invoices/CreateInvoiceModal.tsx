@@ -9,6 +9,7 @@ import { InvoiceStatus, InvoiceCurrency, Order, ChargeItem, BankAccount, Invoice
 import {
   Plus, X, AlertCircle, CheckCircle, Loader2, ChevronDown, ChevronUp, Search,
 } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 const CURRENCIES: InvoiceCurrency[] = ['AED', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'SAR'];
 
@@ -562,12 +563,17 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-3 sm:col-span-1">
               <label className={labelCls}>Link to Order <span className="text-slate-400 font-normal">(optional)</span></label>
-              <select value={form.orderId} onChange={(e) => handleOrderSelect(e.target.value)} className={inputCls}>
-                <option value="">— Select order —</option>
-                {orders.map((o) => (
-                  <option key={o.id} value={o.id}>{o.orderNumber} · {o.deliveryCity} · {o.status}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={form.orderId}
+                onChange={handleOrderSelect}
+                placeholder="— Select order —"
+                clearLabel="— No order linked —"
+                options={orders.map((o) => ({
+                  id: o.id,
+                  label: `${o.orderNumber} · ${o.deliveryCity}`,
+                  sublabel: o.status,
+                }))}
+              />
             </div>
             <div>
               <label className={labelCls}>Status</label>
