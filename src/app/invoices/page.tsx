@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Invoice, InvoiceStatus } from '@/types';
 import {
   Plus, FileText, Trash2, Eye, Pencil, X, Search, Receipt, Download, Loader2, FileType, CheckCircle2,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 
@@ -285,11 +286,13 @@ export default function InvoicesPage() {
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', statusFilter, search],
+    queryKey: ['invoices', statusFilter, search, page],
     queryFn: () => {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
       return api.get(`/invoices?${params}`).then((r) => r.data);
@@ -297,6 +300,7 @@ export default function InvoicesPage() {
   });
 
   const invoices: InvoiceWithBalance[] = data?.data ?? [];
+  const meta: { page: number; limit: number; total: number; totalPages: number } | undefined = data?.meta;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/invoices/${id}`),
@@ -329,14 +333,14 @@ export default function InvoicesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search invoice number, client name…"
             className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | '')}
+          onChange={(e) => { setStatusFilter(e.target.value as InvoiceStatus | ''); setPage(1); }}
           className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-navy/20 bg-white"
         >
           <option value="">All Statuses</option>
@@ -448,6 +452,32 @@ export default function InvoicesPage() {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+            <p className="text-sm text-slate-500">
+              Showing {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} of {meta.total}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-slate-700 font-medium">{meta.page} / {meta.totalPages}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                disabled={page >= meta.totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {invoices.length > 0 && (() => {
@@ -480,15 +510,20 @@ export default function InvoicesPage() {
               ));
         return (
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
-            <span>{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
+            <span>
+              {meta ? `${meta.total} invoice${meta.total !== 1 ? 's' : ''}` : `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''}`}
+              {meta && meta.totalPages > 1 && (
+                <span className="text-slate-400"> · page {meta.page} of {meta.totalPages}</span>
+              )}
+            </span>
             <span className="text-slate-300">·</span>
             <span className="flex items-center gap-1.5">
-              Outstanding:
+              Outstanding{meta && meta.totalPages > 1 ? ' (this page)' : ''}:
               <span className="text-brand-navy">{renderTotals(outstanding, 'text-slate-400')}</span>
             </span>
             <span className="text-slate-300">·</span>
             <span className="flex items-center gap-1.5">
-              Received:
+              Received{meta && meta.totalPages > 1 ? ' (this page)' : ''}:
               <span className="text-emerald-700">{renderTotals(paid, 'text-slate-400')}</span>
             </span>
           </div>
