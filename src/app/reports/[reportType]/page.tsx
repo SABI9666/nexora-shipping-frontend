@@ -62,6 +62,7 @@ export default function ReportDetailPage() {
   const [from, setFrom] = useState(initialRange.from);
   const [to, setTo] = useState(initialRange.to);
   const [voucherType, setVoucherType] = useState('');
+  const [vatType, setVatType] = useState<'output' | 'input'>('output');
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState(initialRange.to);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -163,8 +164,10 @@ export default function ReportDetailPage() {
         const params = new URLSearchParams();
         if (from) params.set('from', from);
         if (to) params.set('to', to);
+        params.set('type', vatType);
         const stamp = `${(from || 'all').replace(/-/g, '')}_${(to || 'all').replace(/-/g, '')}`;
-        await downloadDocx(`/reports/vat-ledger/pdf?${params}`, `VAT_Ledger_${stamp}.pdf`);
+        const prefix = vatType === 'output' ? 'Output_VAT' : 'Input_VAT';
+        await downloadDocx(`/reports/vat-ledger/pdf?${params}`, `${prefix}_${stamp}.pdf`);
       }
     } catch {
       alert('Failed to download PDF.');
@@ -258,27 +261,23 @@ export default function ReportDetailPage() {
     } else if (reportType === 'vat-ledger') {
       const vl = data as VatLedgerDataT;
       const lines: string[] = [];
-      lines.push('VAT Ledger');
-      lines.push('');
-      lines.push('OUTPUT VAT (on sales)');
-      lines.push(toCsv(
-        ['Date', 'Invoice #', 'Customer', 'Rate %', 'Taxable', 'Output VAT', 'Balance (Cr)'],
-        vl.output.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
-      ));
-      lines.push(toCsv([], [['Total', '', '', '', vl.output.totalTaxable, vl.output.totalVat, '']]));
-      lines.push('');
-      lines.push('INPUT VAT (on purchases)');
-      lines.push(toCsv(
-        ['Date', 'Voucher #', 'Sup. Inv #', 'Supplier', 'Rate %', 'Taxable', 'Input VAT', 'Balance (Dr)'],
-        vl.input.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.supplierRef || '', r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
-      ));
-      lines.push(toCsv([], [['Total', '', '', '', '', vl.input.totalTaxable, vl.input.totalVat, '']]));
-      lines.push('');
-      lines.push(toCsv(
-        ['Output VAT', 'Input VAT', vl.netVat >= 0 ? 'Net VAT payable to FTA' : 'Net VAT refundable from FTA'],
-        [[vl.output.totalVat, vl.input.totalVat, Math.abs(vl.netVat)]],
-      ));
-      downloadCsv(`VAT_Ledger_${from}_to_${to}.csv`, lines.join('\n'));
+      if (vatType === 'output') {
+        lines.push('OUTPUT VAT (on sales)');
+        lines.push(toCsv(
+          ['Date', 'Invoice #', 'Customer', 'Rate %', 'Taxable', 'Output VAT', 'Balance (Cr)'],
+          vl.output.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
+        ));
+        lines.push(toCsv([], [['Total', '', '', '', vl.output.totalTaxable, vl.output.totalVat, '']]));
+        downloadCsv(`Output_VAT_${from}_to_${to}.csv`, lines.join('\n'));
+      } else {
+        lines.push('INPUT VAT (on purchases)');
+        lines.push(toCsv(
+          ['Date', 'Voucher #', 'Sup. Inv #', 'Supplier', 'Rate %', 'Taxable', 'Input VAT', 'Balance (Dr)'],
+          vl.input.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.supplierRef || '', r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
+        ));
+        lines.push(toCsv([], [['Total', '', '', '', '', vl.input.totalTaxable, vl.input.totalVat, '']]));
+        downloadCsv(`Input_VAT_${from}_to_${to}.csv`, lines.join('\n'));
+      }
     }
   };
 
@@ -381,6 +380,21 @@ export default function ReportDetailPage() {
             </div>
           </>
         )}
+        {reportType === 'vat-ledger' && (
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Ledger</label>
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+              <button type="button" onClick={() => setVatType('output')}
+                className={`px-4 py-1.5 text-sm font-semibold ${vatType === 'output' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                Output VAT
+              </button>
+              <button type="button" onClick={() => setVatType('input')}
+                className={`px-4 py-1.5 text-sm font-semibold border-l border-slate-200 ${vatType === 'input' ? 'bg-rose-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                Input VAT
+              </button>
+            </div>
+          </div>
+        )}
         {reportType === 'voucher-register' && (
           <>
             <div>
@@ -452,7 +466,7 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'account-statement' && <StatementView data={data} />}
       {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
       {!isLoading && data && reportType === 'job-profit' && <JobProfitView data={data} />}
-      {!isLoading && data && reportType === 'vat-ledger' && <VatLedgerView data={data} />}
+      {!isLoading && data && reportType === 'vat-ledger' && <VatLedgerView data={data} only={vatType} />}
 
       {!isLoading && !data && needsAccount && !accountId && (
         <div className="text-center py-12 text-slate-400 text-sm">
@@ -1229,21 +1243,25 @@ interface VatLedgerDataT {
   netVat: number;
 }
 
-function VatLedgerView({ data }: { data: VatLedgerDataT }) {
+function VatLedgerView({ data, only }: { data: VatLedgerDataT; only: 'output' | 'input' }) {
   const payable = data.netVat >= 0;
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <StatCard label="Output VAT (on sales)" value={formatCurrency(data.output.totalVat)} accent="emerald" />
-        <StatCard label="Input VAT (on purchases)" value={formatCurrency(data.input.totalVat)} accent="rose" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        {only === 'output' ? (
+          <StatCard label="Output VAT (on sales)" value={formatCurrency(data.output.totalVat)} accent="emerald" />
+        ) : (
+          <StatCard label="Input VAT (on purchases)" value={formatCurrency(data.input.totalVat)} accent="rose" />
+        )}
         <StatCard
           label={payable ? 'Net VAT payable to FTA' : 'Net VAT refundable from FTA'}
           value={formatCurrency(Math.abs(data.netVat))}
           accent={payable ? 'navy' : 'emerald'}
+          sub="Output VAT − Input VAT"
         />
       </div>
 
-      <div className="mb-5">
+      {only === 'output' && (
         <Panel title={`Output VAT — Collected on sales (${data.output.rows.length})`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1283,8 +1301,9 @@ function VatLedgerView({ data }: { data: VatLedgerDataT }) {
             </table>
           </div>
         </Panel>
-      </div>
+      )}
 
+      {only === 'input' && (
       <Panel title={`Input VAT — Paid on purchases, recoverable (${data.input.rows.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1325,6 +1344,7 @@ function VatLedgerView({ data }: { data: VatLedgerDataT }) {
           </table>
         </div>
       </Panel>
+      )}
     </>
   );
 }
