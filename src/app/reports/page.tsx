@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
   Receipt, Package, BookOpen, AlertCircle, AlertTriangle, FileSpreadsheet, FileText, ChevronRight,
-  TrendingUp,
+  TrendingUp, Percent,
 } from 'lucide-react';
 
 interface DashboardSnapshot {
@@ -72,6 +72,13 @@ const REPORTS = [
     desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.',
     icon: TrendingUp,
     color: 'bg-teal-50 text-teal-700 border-teal-200',
+  },
+  {
+    key: 'vat-ledger',
+    title: 'VAT Ledger',
+    desc: 'Output VAT (on sales) and Input VAT (on purchases) with taxable value, plus net VAT payable to FTA.',
+    icon: Percent,
+    color: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   },
 ];
 

@@ -22,6 +22,7 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'customer-statement': { title: 'Customer Statement (SOA)', desc: 'Per-customer outstanding statement — aging days, cumulative balance, and receipts / allocations.' },
   'job-profit': { title: 'Job Profit Statement', desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.' },
   'outstanding-payables': { title: 'Outstanding Payables', desc: 'Money you owe suppliers — purchase vouchers minus payments per supplier.' },
+  'vat-ledger': { title: 'VAT Ledger', desc: 'Output VAT on sales and Input VAT on purchases, with net VAT payable to the FTA.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -158,6 +159,12 @@ export default function ReportDetailPage() {
         const accName = accounts.find((a) => a.id === accountId)?.name || 'ACCOUNT';
         const safe = accName.replace(/[^A-Z0-9_-]+/gi, '_').slice(0, 40);
         await downloadDocx(`/reports/account-statement/pdf?${params}`, `Statement_${safe}.pdf`);
+      } else if (reportType === 'vat-ledger') {
+        const params = new URLSearchParams();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        const stamp = `${(from || 'all').replace(/-/g, '')}_${(to || 'all').replace(/-/g, '')}`;
+        await downloadDocx(`/reports/vat-ledger/pdf?${params}`, `VAT_Ledger_${stamp}.pdf`);
       }
     } catch {
       alert('Failed to download PDF.');
@@ -248,10 +255,34 @@ export default function ReportDetailPage() {
         [[jp.totals.totalSales, jp.totals.totalPurchase, jp.totals.netProfit, jp.totals.totalOutstanding]],
       ));
       downloadCsv(`JobProfit_${jp.order.orderNumber}.csv`, lines.join('\n'));
+    } else if (reportType === 'vat-ledger') {
+      const vl = data as VatLedgerDataT;
+      const lines: string[] = [];
+      lines.push('VAT Ledger');
+      lines.push('');
+      lines.push('OUTPUT VAT (on sales)');
+      lines.push(toCsv(
+        ['Date', 'Invoice #', 'Customer', 'Rate %', 'Taxable', 'Output VAT', 'Balance (Cr)'],
+        vl.output.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
+      ));
+      lines.push(toCsv([], [['Total', '', '', '', vl.output.totalTaxable, vl.output.totalVat, '']]));
+      lines.push('');
+      lines.push('INPUT VAT (on purchases)');
+      lines.push(toCsv(
+        ['Date', 'Voucher #', 'Sup. Inv #', 'Supplier', 'Rate %', 'Taxable', 'Input VAT', 'Balance (Dr)'],
+        vl.input.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.supplierRef || '', r.particulars, r.ratePercent, r.taxable, r.vat, r.running]),
+      ));
+      lines.push(toCsv([], [['Total', '', '', '', '', vl.input.totalTaxable, vl.input.totalVat, '']]));
+      lines.push('');
+      lines.push(toCsv(
+        ['Output VAT', 'Input VAT', vl.netVat >= 0 ? 'Net VAT payable to FTA' : 'Net VAT refundable from FTA'],
+        [[vl.output.totalVat, vl.input.totalVat, Math.abs(vl.netVat)]],
+      ));
+      downloadCsv(`VAT_Ledger_${from}_to_${to}.csv`, lines.join('\n'));
     }
   };
 
-  const showPdfButton = reportType === 'customer-statement' || reportType === 'job-profit' || reportType === 'account-statement';
+  const showPdfButton = reportType === 'customer-statement' || reportType === 'job-profit' || reportType === 'account-statement' || reportType === 'vat-ledger';
 
   return (
     <DashboardLayout>
@@ -421,6 +452,7 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'account-statement' && <StatementView data={data} />}
       {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
       {!isLoading && data && reportType === 'job-profit' && <JobProfitView data={data} />}
+      {!isLoading && data && reportType === 'vat-ledger' && <VatLedgerView data={data} />}
 
       {!isLoading && !data && needsAccount && !accountId && (
         <div className="text-center py-12 text-slate-400 text-sm">
@@ -1184,6 +1216,115 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+interface VatOutputRow { date: string; ref: string; particulars: string; currency: string; taxable: number; ratePercent: number; vat: number; running: number }
+interface VatInputRow { date: string; ref: string; supplierRef?: string; particulars: string; currency: string; taxable: number; ratePercent: number; vat: number; running: number }
+interface VatLedgerDataT {
+  period: { from: string | null; to: string | null };
+  output: { rows: VatOutputRow[]; totalTaxable: number; totalVat: number };
+  input: { rows: VatInputRow[]; totalTaxable: number; totalVat: number };
+  netVat: number;
+}
+
+function VatLedgerView({ data }: { data: VatLedgerDataT }) {
+  const payable = data.netVat >= 0;
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <StatCard label="Output VAT (on sales)" value={formatCurrency(data.output.totalVat)} accent="emerald" />
+        <StatCard label="Input VAT (on purchases)" value={formatCurrency(data.input.totalVat)} accent="rose" />
+        <StatCard
+          label={payable ? 'Net VAT payable to FTA' : 'Net VAT refundable from FTA'}
+          value={formatCurrency(Math.abs(data.netVat))}
+          accent={payable ? 'navy' : 'emerald'}
+        />
+      </div>
+
+      <div className="mb-5">
+        <Panel title={`Output VAT — Collected on sales (${data.output.rows.length})`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <Th>Date</Th><Th>Invoice #</Th><Th>Customer</Th>
+                  <Th align="right">Rate %</Th><Th align="right">Taxable</Th>
+                  <Th align="right">Output VAT</Th><Th align="right">Balance</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.output.rows.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No sales VAT in this period.</td></tr>
+                )}
+                {data.output.rows.map((r, i) => (
+                  <tr key={`${r.ref}-${i}`} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-500">{formatDate(r.date)}</td>
+                    <td className="px-4 py-2 font-mono text-brand-navy">{r.ref}</td>
+                    <td className="px-4 py-2 text-slate-700 max-w-[240px] truncate">{r.particulars}</td>
+                    <td className="px-4 py-2 text-right text-slate-500">{r.ratePercent}%</td>
+                    <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(r.taxable, r.currency)}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-emerald-700">{formatCurrency(r.vat, r.currency)}</td>
+                    <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(r.running, r.currency)} Cr</td>
+                  </tr>
+                ))}
+              </tbody>
+              {data.output.rows.length > 0 && (
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                  <tr>
+                    <td colSpan={4} className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase">Total Output VAT</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-slate-600">{formatCurrency(data.output.totalTaxable)}</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{formatCurrency(data.output.totalVat)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title={`Input VAT — Paid on purchases, recoverable (${data.input.rows.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <Th>Date</Th><Th>Voucher #</Th><Th>Sup. Inv #</Th><Th>Supplier</Th>
+                <Th align="right">Rate %</Th><Th align="right">Taxable</Th>
+                <Th align="right">Input VAT</Th><Th align="right">Balance</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.input.rows.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No purchase VAT in this period.</td></tr>
+              )}
+              {data.input.rows.map((r, i) => (
+                <tr key={`${r.ref}-${i}`} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 text-slate-500">{formatDate(r.date)}</td>
+                  <td className="px-4 py-2 font-mono text-brand-navy">{r.ref}</td>
+                  <td className="px-4 py-2 text-xs font-mono text-slate-500">{r.supplierRef || '—'}</td>
+                  <td className="px-4 py-2 text-slate-700 max-w-[220px] truncate">{r.particulars}</td>
+                  <td className="px-4 py-2 text-right text-slate-500">{r.ratePercent}%</td>
+                  <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(r.taxable, r.currency)}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-rose-700">{formatCurrency(r.vat, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(r.running, r.currency)} Dr</td>
+                </tr>
+              ))}
+            </tbody>
+            {data.input.rows.length > 0 && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                <tr>
+                  <td colSpan={5} className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase">Total Input VAT</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-slate-600">{formatCurrency(data.input.totalTaxable)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-rose-700">{formatCurrency(data.input.totalVat)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Panel>
     </>
   );
 }
