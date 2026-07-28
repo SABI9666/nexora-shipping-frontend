@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
   Receipt, Package, BookOpen, AlertCircle, AlertTriangle, FileSpreadsheet, FileText, ChevronRight,
-  TrendingUp, Percent,
+  TrendingUp, Percent, Scale, PieChart, Landmark, ListTree,
 } from 'lucide-react';
 
 interface DashboardSnapshot {
@@ -79,6 +79,34 @@ const REPORTS = [
     desc: 'Output VAT (on sales) and Input VAT (on purchases) with taxable value, plus net VAT payable to FTA.',
     icon: Percent,
     color: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  },
+  {
+    key: 'trial-balance',
+    title: 'Trial Balance',
+    desc: 'Every account’s net Debit / Credit as of a date, in AED — the check that the books balance.',
+    icon: Scale,
+    color: 'bg-slate-50 text-slate-700 border-slate-200',
+  },
+  {
+    key: 'profit-and-loss',
+    title: 'Profit & Loss',
+    desc: 'Income vs expenses for a period, in AED — gross and net profit.',
+    icon: PieChart,
+    color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
+  {
+    key: 'balance-sheet',
+    title: 'Balance Sheet',
+    desc: 'Assets vs Liabilities & Equity as of a date, in AED, with retained profit.',
+    icon: Landmark,
+    color: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  {
+    key: 'general-ledger',
+    title: 'General Ledger',
+    desc: 'Every account’s postings with opening / closing balance, in AED — the full ledger.',
+    icon: ListTree,
+    color: 'bg-violet-50 text-violet-700 border-violet-200',
   },
 ];
 

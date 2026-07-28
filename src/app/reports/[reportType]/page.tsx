@@ -23,6 +23,10 @@ const REPORT_META: Record<string, { title: string; desc: string }> = {
   'job-profit': { title: 'Job Profit Statement', desc: 'Per-Job purchase costs vs sales invoices — Net Profit and Current Outstanding.' },
   'outstanding-payables': { title: 'Outstanding Payables', desc: 'Money you owe suppliers — purchase vouchers minus payments per supplier.' },
   'vat-ledger': { title: 'VAT Ledger', desc: 'Output VAT on sales and Input VAT on purchases, with net VAT payable to the FTA.' },
+  'trial-balance': { title: 'Trial Balance', desc: 'Every account’s net Debit / Credit as of a date — all figures in AED.' },
+  'profit-and-loss': { title: 'Profit & Loss', desc: 'Income vs expenses for the period — net profit, all in AED.' },
+  'balance-sheet': { title: 'Balance Sheet', desc: 'Assets vs Liabilities & Equity as of a date — all in AED.' },
+  'general-ledger': { title: 'General Ledger', desc: 'Per-account postings with opening / closing balances — all in AED.' },
 };
 
 function defaultRange(): { from: string; to: string } {
@@ -104,7 +108,9 @@ export default function ReportDetailPage() {
       if (
         reportType === 'outstanding-receivables' ||
         reportType === 'outstanding-payables' ||
-        reportType === 'customer-statement'
+        reportType === 'customer-statement' ||
+        reportType === 'trial-balance' ||
+        reportType === 'balance-sheet'
       ) {
         params.set('asOf', asOf);
       } else if (reportType !== 'job-profit') {
@@ -116,6 +122,9 @@ export default function ReportDetailPage() {
         if (accountId) params.set('accountId', accountId);
       }
       if (reportType === 'account-statement' || reportType === 'customer-statement') {
+        params.set('accountId', accountId);
+      }
+      if (reportType === 'general-ledger' && accountId) {
         params.set('accountId', accountId);
       }
       if (reportType === 'job-profit') {
@@ -278,6 +287,50 @@ export default function ReportDetailPage() {
         lines.push(toCsv([], [['Total', '', '', '', '', vl.input.totalTaxable, vl.input.totalVat, '']]));
         downloadCsv(`Input_VAT_${from}_to_${to}.csv`, lines.join('\n'));
       }
+    } else if (reportType === 'trial-balance') {
+      const tb = data as TrialBalanceDataT;
+      const rows = tb.rows.map((r) => [r.code, r.name, GROUP_LABEL[r.groupType] || r.groupType, r.debit, r.credit]);
+      rows.push(['', '', 'TOTAL', tb.totals.totalDebit, tb.totals.totalCredit]);
+      downloadCsv(`Trial_Balance_${asOf}.csv`, toCsv(['Code', 'Account', 'Group', 'Debit (AED)', 'Credit (AED)'], rows));
+    } else if (reportType === 'profit-and-loss') {
+      const pl = data as ProfitLossDataT;
+      const out: string[] = ['Profit & Loss (AED)', ''];
+      out.push('INCOME');
+      out.push(toCsv(['Code', 'Account', 'Amount'], pl.income.map((r) => [r.code, r.name, r.amount])));
+      out.push(toCsv([], [['', 'Total Income', pl.totals.totalIncome]]));
+      out.push('');
+      out.push('EXPENSES');
+      out.push(toCsv(['Code', 'Account', 'Amount'], pl.expense.map((r) => [r.code, r.name, r.amount])));
+      out.push(toCsv([], [['', 'Total Expense', pl.totals.totalExpense]]));
+      out.push('');
+      out.push(toCsv([], [['', 'NET PROFIT', pl.totals.netProfit]]));
+      downloadCsv(`Profit_and_Loss_${from}_to_${to}.csv`, out.join('\n'));
+    } else if (reportType === 'balance-sheet') {
+      const bs = data as BalanceSheetDataT;
+      const out: string[] = ['Balance Sheet (AED)', ''];
+      out.push('ASSETS');
+      out.push(toCsv(['Code', 'Account', 'Amount'], bs.assets.map((r) => [r.code, r.name, r.amount])));
+      out.push(toCsv([], [['', 'Total Assets', bs.totals.totalAssets]]));
+      out.push('');
+      out.push('LIABILITIES & EQUITY');
+      out.push(toCsv(['Code', 'Account', 'Amount'], bs.liabilities.map((r) => [r.code, r.name, r.amount])));
+      out.push(toCsv([], [['', 'Retained Profit', bs.retainedProfit]]));
+      out.push(toCsv([], [['', 'Total Liab. & Equity', bs.totals.totalEquityAndLiabilities]]));
+      downloadCsv(`Balance_Sheet_${asOf}.csv`, out.join('\n'));
+    } else if (reportType === 'general-ledger') {
+      const gl = data as GeneralLedgerDataT;
+      const out: string[] = ['General Ledger (AED)', ''];
+      for (const a of gl.accounts) {
+        out.push(`${a.code} · ${a.name} (${GROUP_LABEL[a.groupType] || a.groupType})`);
+        out.push(toCsv([], [['Opening', '', '', '', `${a.opening.balance} ${a.opening.side}`]]));
+        out.push(toCsv(
+          ['Date', 'Reference', 'Narration', 'Debit', 'Credit', 'Balance'],
+          a.rows.map((r) => [r.date?.slice(0, 10) || '', r.ref, r.narration, r.debit, r.credit, `${r.balance} ${r.side}`]),
+        ));
+        out.push(toCsv([], [['Closing', '', '', a.totalDebit, a.totalCredit, `${a.closing.balance} ${a.closing.side}`]]));
+        out.push('');
+      }
+      downloadCsv(`General_Ledger_${from}_to_${to}.csv`, out.join('\n'));
     }
   };
 
@@ -316,7 +369,7 @@ export default function ReportDetailPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3 mb-5 bg-white border border-slate-200 rounded-xl p-4">
-        {reportType === 'outstanding-receivables' || reportType === 'outstanding-payables' || reportType === 'customer-statement' ? (
+        {reportType === 'outstanding-receivables' || reportType === 'outstanding-payables' || reportType === 'customer-statement' || reportType === 'trial-balance' || reportType === 'balance-sheet' ? (
           <div>
             <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">As of</label>
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
@@ -395,6 +448,22 @@ export default function ReportDetailPage() {
             </div>
           </div>
         )}
+        {reportType === 'general-ledger' && (
+          <div className="min-w-[280px]">
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Account (optional)</label>
+            <SearchableSelect
+              value={accountId}
+              onChange={setAccountId}
+              placeholder="All accounts"
+              clearLabel="All accounts"
+              options={accounts.map((a) => ({
+                id: a.id,
+                label: `${a.code} · ${a.name}`,
+                sublabel: a.accountGroup?.name || null,
+              }))}
+            />
+          </div>
+        )}
         {reportType === 'voucher-register' && (
           <>
             <div>
@@ -467,6 +536,10 @@ export default function ReportDetailPage() {
       {!isLoading && data && reportType === 'customer-statement' && <CustomerStatementView data={data} />}
       {!isLoading && data && reportType === 'job-profit' && <JobProfitView data={data} />}
       {!isLoading && data && reportType === 'vat-ledger' && <VatLedgerView data={data} only={vatType} />}
+      {!isLoading && data && reportType === 'trial-balance' && <TrialBalanceView data={data} />}
+      {!isLoading && data && reportType === 'profit-and-loss' && <ProfitLossView data={data} />}
+      {!isLoading && data && reportType === 'balance-sheet' && <BalanceSheetView data={data} />}
+      {!isLoading && data && reportType === 'general-ledger' && <GeneralLedgerView data={data} />}
 
       {!isLoading && !data && needsAccount && !accountId && (
         <div className="text-center py-12 text-slate-400 text-sm">
@@ -1346,6 +1419,206 @@ function VatLedgerView({ data, only }: { data: VatLedgerDataT; only: 'output' | 
       </Panel>
       )}
     </>
+  );
+}
+
+// ---- Financial statements (all AED) ----------------------------------------
+const GROUP_LABEL: Record<string, string> = {
+  ASSET: 'Assets', LIABILITIES: 'Liabilities & Equity', PL: 'Profit & Loss', TRADING: 'Trading',
+};
+const aed = (n: number) => formatCurrency(n, 'AED');
+
+interface TrialBalanceDataT {
+  asOf: string;
+  rows: { code: string; name: string; groupType: string; debit: number; credit: number }[];
+  totals: { totalDebit: number; totalCredit: number; difference: number };
+}
+function TrialBalanceView({ data }: { data: TrialBalanceDataT }) {
+  const balanced = Math.abs(data.totals.difference) < 0.01;
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <StatCard label="Total Debit" value={aed(data.totals.totalDebit)} accent="rose" />
+        <StatCard label="Total Credit" value={aed(data.totals.totalCredit)} accent="emerald" />
+        <StatCard label={balanced ? 'Balanced' : 'Difference'} value={balanced ? '✓ In balance' : aed(Math.abs(data.totals.difference))} accent={balanced ? 'emerald' : 'rose'} sub={`As of ${formatDate(data.asOf)}`} />
+      </div>
+      <Panel title={`Trial Balance · ${data.rows.length} accounts · AED`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr><Th>Code</Th><Th>Account</Th><Th>Group</Th><Th align="right">Debit</Th><Th align="right">Credit</Th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.rows.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No balances.</td></tr>}
+              {data.rows.map((r, i) => (
+                <tr key={`${r.code}-${i}`} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 font-mono text-brand-navy">{r.code}</td>
+                  <td className="px-4 py-2 text-slate-700">{r.name}</td>
+                  <td className="px-4 py-2 text-xs text-slate-400">{GROUP_LABEL[r.groupType] || r.groupType}</td>
+                  <td className="px-4 py-2 text-right text-rose-700">{r.debit > 0 ? aed(r.debit) : '—'}</td>
+                  <td className="px-4 py-2 text-right text-emerald-700">{r.credit > 0 ? aed(r.credit) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+              <tr>
+                <td colSpan={3} className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase">Total</td>
+                <td className="px-4 py-2.5 text-right font-bold text-rose-700">{aed(data.totals.totalDebit)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{aed(data.totals.totalCredit)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+interface ProfitLossDataT {
+  period: { from: string | null; to: string | null };
+  income: { code: string; name: string; amount: number }[];
+  expense: { code: string; name: string; amount: number }[];
+  totals: { totalIncome: number; totalExpense: number; netProfit: number };
+}
+function ProfitLossView({ data }: { data: ProfitLossDataT }) {
+  const profit = data.totals.netProfit >= 0;
+  const section = (title: string, rows: { code: string; name: string; amount: number }[], total: number, color: string) => (
+    <Panel title={`${title} · AED`}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-slate-100">
+            {rows.length === 0 && <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-400">None in this period.</td></tr>}
+            {rows.map((r, i) => (
+              <tr key={`${r.code}-${i}`} className="hover:bg-slate-50">
+                <td className="px-4 py-2 text-slate-700"><span className="font-mono text-xs text-slate-400 mr-2">{r.code}</span>{r.name}</td>
+                <td className="px-4 py-2 text-right font-medium tabular-nums">{aed(r.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+            <tr><td className="px-4 py-2.5 text-xs font-bold text-slate-500 uppercase">{title} total</td>
+              <td className={`px-4 py-2.5 text-right font-bold ${color}`}>{aed(total)}</td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </Panel>
+  );
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <StatCard label="Total Income" value={aed(data.totals.totalIncome)} accent="emerald" />
+        <StatCard label="Total Expense" value={aed(data.totals.totalExpense)} accent="rose" />
+        <StatCard label={profit ? 'Net Profit' : 'Net Loss'} value={aed(Math.abs(data.totals.netProfit))} accent={profit ? 'emerald' : 'rose'} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {section('Income', data.income, data.totals.totalIncome, 'text-emerald-700')}
+        {section('Expenses', data.expense, data.totals.totalExpense, 'text-rose-700')}
+      </div>
+    </>
+  );
+}
+
+interface BalanceSheetDataT {
+  asOf: string;
+  assets: { code: string; name: string; amount: number }[];
+  liabilities: { code: string; name: string; amount: number }[];
+  retainedProfit: number;
+  totals: { totalAssets: number; totalLiabilities: number; totalEquityAndLiabilities: number; difference: number };
+}
+function BalanceSheetView({ data }: { data: BalanceSheetDataT }) {
+  const balanced = Math.abs(data.totals.difference) < 0.01;
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <StatCard label="Total Assets" value={aed(data.totals.totalAssets)} accent="navy" />
+        <StatCard label="Liabilities & Equity" value={aed(data.totals.totalEquityAndLiabilities)} accent="navy" />
+        <StatCard label={balanced ? 'Balanced' : 'Difference'} value={balanced ? '✓ Balances' : aed(Math.abs(data.totals.difference))} accent={balanced ? 'emerald' : 'rose'} sub={`As of ${formatDate(data.asOf)}`} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Panel title="Assets · AED">
+          <div className="overflow-x-auto"><table className="w-full text-sm"><tbody className="divide-y divide-slate-100">
+            {data.assets.length === 0 && <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-400">None.</td></tr>}
+            {data.assets.map((r, i) => (
+              <tr key={`${r.code}-${i}`} className="hover:bg-slate-50">
+                <td className="px-4 py-2 text-slate-700"><span className="font-mono text-xs text-slate-400 mr-2">{r.code}</span>{r.name}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{aed(r.amount)}</td>
+              </tr>
+            ))}
+          </tbody><tfoot className="bg-slate-50 border-t-2 border-slate-200"><tr>
+            <td className="px-4 py-2.5 text-xs font-bold text-slate-500 uppercase">Total Assets</td>
+            <td className="px-4 py-2.5 text-right font-bold text-brand-navy">{aed(data.totals.totalAssets)}</td>
+          </tr></tfoot></table></div>
+        </Panel>
+        <Panel title="Liabilities & Equity · AED">
+          <div className="overflow-x-auto"><table className="w-full text-sm"><tbody className="divide-y divide-slate-100">
+            {data.liabilities.map((r, i) => (
+              <tr key={`${r.code}-${i}`} className="hover:bg-slate-50">
+                <td className="px-4 py-2 text-slate-700"><span className="font-mono text-xs text-slate-400 mr-2">{r.code}</span>{r.name}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{aed(r.amount)}</td>
+              </tr>
+            ))}
+            <tr className="hover:bg-slate-50">
+              <td className="px-4 py-2 text-slate-700 font-medium">Retained Profit / (Loss)</td>
+              <td className={`px-4 py-2 text-right tabular-nums font-medium ${data.retainedProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{aed(data.retainedProfit)}</td>
+            </tr>
+          </tbody><tfoot className="bg-slate-50 border-t-2 border-slate-200"><tr>
+            <td className="px-4 py-2.5 text-xs font-bold text-slate-500 uppercase">Total Liab. & Equity</td>
+            <td className="px-4 py-2.5 text-right font-bold text-brand-navy">{aed(data.totals.totalEquityAndLiabilities)}</td>
+          </tr></tfoot></table></div>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+interface GLAccount {
+  key: string; code: string; name: string; groupType: string;
+  opening: { balance: number; side: string };
+  rows: { date: string; ref: string; narration: string; debit: number; credit: number; balance: number; side: string }[];
+  totalDebit: number; totalCredit: number;
+  closing: { balance: number; side: string };
+}
+interface GeneralLedgerDataT { accounts: GLAccount[] }
+function GeneralLedgerView({ data }: { data: GeneralLedgerDataT }) {
+  if (!data.accounts.length) return <div className="text-center py-12 text-slate-400 text-sm">No ledger activity in this period.</div>;
+  return (
+    <div className="space-y-5">
+      {data.accounts.map((a) => (
+        <Panel key={a.key} title={`${a.code} · ${a.name}  —  ${GROUP_LABEL[a.groupType] || a.groupType} · AED`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr><Th>Date</Th><Th>Reference</Th><Th>Narration</Th><Th align="right">Debit</Th><Th align="right">Credit</Th><Th align="right">Balance</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr className="bg-slate-50/50">
+                  <td colSpan={5} className="px-4 py-2 text-xs font-semibold text-slate-500">Opening balance</td>
+                  <td className="px-4 py-2 text-right font-semibold">{aed(a.opening.balance)} <span className="text-xs text-slate-400">{a.opening.side}</span></td>
+                </tr>
+                {a.rows.map((r, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-500">{formatDate(r.date)}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-brand-navy">{r.ref}</td>
+                    <td className="px-4 py-2 text-slate-600 max-w-[280px] truncate">{r.narration || '—'}</td>
+                    <td className="px-4 py-2 text-right text-rose-700">{r.debit > 0 ? aed(r.debit) : '—'}</td>
+                    <td className="px-4 py-2 text-right text-emerald-700">{r.credit > 0 ? aed(r.credit) : '—'}</td>
+                    <td className="px-4 py-2 text-right font-medium">{aed(r.balance)} <span className="text-xs text-slate-400">{r.side}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                <tr>
+                  <td colSpan={3} className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase">Closing balance</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-rose-700">{aed(a.totalDebit)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{aed(a.totalCredit)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-brand-navy">{aed(a.closing.balance)} {a.closing.side}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Panel>
+      ))}
+    </div>
   );
 }
 
