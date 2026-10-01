@@ -8,6 +8,10 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import api from '@/lib/api';
 import { downloadDocx } from '@/lib/downloadDocx';
 import { formatCurrency, formatDate } from '@/lib/utils';
+
+// Accounting-style money: negatives (credit notes / reversals) in brackets.
+const accFmt = (n: number, currency?: string) =>
+  n < 0 ? `(${formatCurrency(-n, currency)})` : formatCurrency(n, currency);
 import { Voucher, Account, Order } from '@/types';
 import { VOUCHER_TYPE_LABEL, VOUCHER_TYPE_COLOR, PAYMENT_METHOD_LABEL } from '@/app/vouchers/constants';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -257,14 +261,14 @@ export default function ReportDetailPage() {
       lines.push('');
       lines.push('SALES');
       lines.push(toCsv(
-        ['#', 'Invoice #', 'Date', 'Customer', 'Status', 'Currency', 'Total', 'Rate', 'Paid (AED)', 'Outstanding (AED)', 'Total (AED)'],
-        jp.salesRows.map((r, i) => [i + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10) || '', r.billToName, r.status, r.currency, r.total, r.exchangeRate ?? 1, r.paidAed ?? r.paid, r.outstandingAed ?? r.outstanding, r.totalAed ?? r.total]),
+        ['#', 'Invoice #', 'Date', 'Customer', 'Status', 'Currency', 'Invoiced', 'Credit Notes', 'Net Total', 'Rate', 'Invoiced (AED)', 'Credit Notes (AED)', 'Paid (AED)', 'Outstanding (AED)', 'Net Total (AED)'],
+        jp.salesRows.map((r, i) => [i + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10) || '', r.billToName, r.status, r.currency, r.invoiceTotal ?? r.total, r.creditNote ?? 0, r.total, r.exchangeRate ?? 1, r.invoiceTotalAed ?? r.totalAed ?? r.total, r.creditNoteAed ?? 0, r.paidAed ?? r.paid, r.outstandingAed ?? r.outstanding, r.totalAed ?? r.total]),
       ));
       lines.push('');
       lines.push('SUMMARY');
       lines.push(toCsv(
-        ['Total Sales (AED)', 'Total Purchase (AED)', 'Net Profit (AED)', 'Current Outstanding (AED)'],
-        [[jp.totals.totalSales, jp.totals.totalPurchase, jp.totals.netProfit, jp.totals.totalOutstanding]],
+        ['Sales Invoiced (AED)', 'Credit Notes (AED)', 'Total Sales (AED)', 'Total Purchase (AED)', 'Net Profit (AED)', 'Current Outstanding (AED)'],
+        [[jp.totals.totalSalesInvoiced ?? jp.totals.totalSales, jp.totals.totalCreditNotes ?? 0, jp.totals.totalSales, jp.totals.totalPurchase, jp.totals.netProfit, jp.totals.totalOutstanding]],
       ));
       downloadCsv(`JobProfit_${jp.order.orderNumber}.csv`, lines.join('\n'));
     } else if (reportType === 'vat-ledger') {
@@ -571,7 +575,10 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string;
 }
 
 interface SalesSummaryData {
-  totals: { invoiceCount: number; totalAmount: number; paidAmount: number; outstandingAmount: number };
+  totals: {
+    invoiceCount: number; totalAmount: number; paidAmount: number; outstandingAmount: number;
+    creditNoteCount?: number; creditNoteAmount?: number; netSalesAmount?: number;
+  };
   byStatus: { status: string; count: number; amount: number }[];
   byMonth: { month: string; count: number; amount: number }[];
   topCustomers: { name: string; count: number; amount: number }[];
@@ -582,7 +589,13 @@ function SalesSummaryView({ data }: { data: SalesSummaryData }) {
     <>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
         <StatCard label="Invoices" value={String(data.totals.invoiceCount)} />
-        <StatCard label="Total billed" value={formatCurrency(data.totals.totalAmount)} />
+        <StatCard
+          label="Total billed"
+          value={formatCurrency(data.totals.totalAmount)}
+          sub={(data.totals.creditNoteAmount ?? 0) > 0.005
+            ? `Less credit notes ${formatCurrency(data.totals.creditNoteAmount!)} (${data.totals.creditNoteCount}) → net ${formatCurrency(data.totals.netSalesAmount ?? 0)}`
+            : undefined}
+        />
         <StatCard label="Paid" value={formatCurrency(data.totals.paidAmount)} />
         <StatCard label="Outstanding" value={formatCurrency(data.totals.outstandingAmount)} />
       </div>
@@ -758,7 +771,7 @@ interface OutstandingData {
   asOf: string;
   totals: { invoiceCount: number; outstandingAed: number };
   byCurrency: { currency: string; count: number; outstanding: number }[];
-  rows: { id: string; invoiceNumber: string; invoiceDate: string; dueDate: string | null; billToName: string; status: string; currency: string; total: number; paid: number; adjustments: number; outstanding: number; daysOverdue: number }[];
+  rows: { id: string; invoiceNumber: string; invoiceDate: string; dueDate: string | null; billToName: string; status: string; currency: string; total: number; creditNotes?: number; paid: number; adjustments: number; outstanding: number; daysOverdue: number }[];
 }
 function OutstandingView({ data }: { data: OutstandingData }) {
   return (
@@ -776,7 +789,7 @@ function OutstandingView({ data }: { data: OutstandingData }) {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <Th>Invoice #</Th><Th>Date</Th><Th>Due</Th><Th>Customer</Th><Th>Status</Th>
-                <Th align="right">Total</Th><Th align="right">Paid</Th><Th align="right">Adj</Th><Th align="right">Outstanding</Th><Th align="right">Overdue</Th>
+                <Th align="right">Total</Th><Th align="right">Cr. Notes</Th><Th align="right">Paid</Th><Th align="right">Adj</Th><Th align="right">Outstanding</Th><Th align="right">Overdue</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -788,6 +801,7 @@ function OutstandingView({ data }: { data: OutstandingData }) {
                   <td className="px-4 py-2">{r.billToName}</td>
                   <td className="px-4 py-2"><Pill>{r.status}</Pill></td>
                   <td className="px-4 py-2 text-right">{formatCurrency(r.total, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-rose-700">{(r.creditNotes ?? 0) > 0 ? formatCurrency(r.creditNotes!, r.currency) : '—'}</td>
                   <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.paid, r.currency)}</td>
                   <td className="px-4 py-2 text-right text-rose-700">{formatCurrency(r.adjustments, r.currency)}</td>
                   <td className="px-4 py-2 text-right font-bold">{formatCurrency(r.outstanding, r.currency)}</td>
@@ -989,6 +1003,7 @@ interface CustomerStatementData {
     totalOutstanding: number;
     voucherCount?: number;
     totalReceived?: number;
+    totalCreditNotes?: number;
     totalDebited?: number;
   };
   rows: { id: string; invoiceNumber: string; invoiceDate: string; currency: string; days: number; balance: number; cumBalance: number }[];
@@ -997,6 +1012,7 @@ interface CustomerStatementData {
 function CustomerStatementView({ data }: { data: CustomerStatementData }) {
   const vouchers = data.vouchers ?? [];
   const totalReceived = data.totals.totalReceived ?? 0;
+  const totalCreditNotes = data.totals.totalCreditNotes ?? 0;
   const totalDebited = data.totals.totalDebited ?? 0;
   return (
     <>
@@ -1023,9 +1039,11 @@ function CustomerStatementView({ data }: { data: CustomerStatementData }) {
         <StatCard label="Open invoices" value={String(data.totals.invoiceCount)} />
         <StatCard label="Total outstanding" value={formatCurrency(data.totals.totalOutstanding, data.currency)} />
         <StatCard
-          label="Receipts / Credits"
+          label="Receipts"
           value={formatCurrency(totalReceived, data.currency)}
-          sub={`${vouchers.filter((v) => v.direction === 'CREDIT').length} voucher${vouchers.filter((v) => v.direction === 'CREDIT').length === 1 ? '' : 's'}`}
+          sub={totalCreditNotes > 0.005
+            ? `+ credit notes ${formatCurrency(totalCreditNotes, data.currency)}`
+            : `${vouchers.filter((v) => v.direction === 'CREDIT').length} voucher${vouchers.filter((v) => v.direction === 'CREDIT').length === 1 ? '' : 's'}`}
         />
         <StatCard label="As of" value={formatDate(data.asOf)} />
       </div>
@@ -1169,6 +1187,12 @@ interface JobProfitDataT {
     outstanding: number;
     status: string;
     exchangeRate?: number;
+    // total / totalAed are AFTER credit notes; invoiceTotal is the original.
+    invoiceTotal?: number;
+    invoiceTotalAed?: number;
+    creditNote?: number;
+    creditNoteAed?: number;
+    creditNoteNumbers?: string[];
     totalAed?: number;
     paidAed?: number;
     outstandingAed?: number;
@@ -1179,6 +1203,8 @@ interface JobProfitDataT {
   totals: {
     totalPurchase: number;
     totalSales: number;
+    totalSalesInvoiced?: number;
+    totalCreditNotes?: number;
     netProfit: number;
     profitMargin?: number | null;
     totalOutstanding: number;
@@ -1225,7 +1251,12 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
-        <StatCard label="Total Sales (S)" value={formatCurrency(data.totals.totalSales, cur)} accent="emerald" />
+        <StatCard
+          label="Total Sales (S)"
+          value={formatCurrency(data.totals.totalSales, cur)}
+          accent="emerald"
+          sub={(data.totals.totalCreditNotes ?? 0) > 0.005 ? `after ${formatCurrency(data.totals.totalCreditNotes!, cur)} credit notes` : undefined}
+        />
         <StatCard label="Total Purchase (P)" value={formatCurrency(data.totals.totalPurchase, cur)} accent="rose" />
         <StatCard
           label="Net Profit (S − P)"
@@ -1284,12 +1315,12 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <Th align="center">#</Th><Th>Invoice #</Th><Th>Date</Th><Th>Customer</Th>
-                <Th>Status</Th><Th align="right">Paid ({cur})</Th><Th align="right">Outstanding ({cur})</Th><Th align="right">Total ({cur})</Th>
+                <Th>Status</Th><Th align="right">Invoiced ({cur})</Th><Th align="right">Cr. Note ({cur})</Th><Th align="right">Paid ({cur})</Th><Th align="right">Outstanding ({cur})</Th><Th align="right">Net Total ({cur})</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.salesRows.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No invoices issued on this Job.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No invoices issued on this Job.</td></tr>
               )}
               {data.salesRows.map((r, idx) => (
                 <tr key={r.invoiceNumber} className="hover:bg-slate-50">
@@ -1298,6 +1329,10 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
                   <td className="px-4 py-2 text-slate-500">{formatDate(r.invoiceDate)}</td>
                   <td className="px-4 py-2">{r.billToName}</td>
                   <td className="px-4 py-2"><Pill>{r.status}</Pill></td>
+                  <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(r.invoiceTotalAed ?? r.totalAed ?? r.total, cur)}</td>
+                  <td className="px-4 py-2 text-right text-rose-700" title={(r.creditNoteNumbers || []).join(', ')}>
+                    {(r.creditNoteAed ?? 0) > 0.005 ? `(${formatCurrency(r.creditNoteAed!, cur)})` : '—'}
+                  </td>
                   <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.paidAed ?? r.paid, cur)}</td>
                   <td className="px-4 py-2 text-right text-rose-700">{formatCurrency(r.outstandingAed ?? r.outstanding, cur)}</td>
                   <td className="px-4 py-2 text-right font-semibold">
@@ -1310,7 +1345,9 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
             {data.salesRows.length > 0 && (
               <tfoot className="bg-emerald-50/50 border-t-2 border-emerald-300">
                 <tr>
-                  <td colSpan={7} className="px-4 py-2 text-right text-xs font-bold text-emerald-700 uppercase">Total Sales</td>
+                  <td colSpan={9} className="px-4 py-2 text-right text-xs font-bold text-emerald-700 uppercase">
+                    Total Sales{(data.totals.totalCreditNotes ?? 0) > 0.005 ? ' (net of credit notes)' : ''}
+                  </td>
                   <td className="px-4 py-2 text-right font-bold text-emerald-700">{formatCurrency(data.totals.totalSales, cur)}</td>
                 </tr>
               </tfoot>
@@ -1325,6 +1362,11 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
           <div>
             <p className="text-xs text-white/60">Total Sales</p>
             <p className="text-xl font-bold text-emerald-300 mt-1">{formatCurrency(data.totals.totalSales, cur)}</p>
+            {(data.totals.totalCreditNotes ?? 0) > 0.005 && (
+              <p className="text-[11px] text-white/60 mt-0.5">
+                Invoiced {formatCurrency(data.totals.totalSalesInvoiced ?? 0, cur)} less credit notes {formatCurrency(data.totals.totalCreditNotes!, cur)}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs text-white/60">Total Purchase</p>
@@ -1394,8 +1436,8 @@ function VatLedgerView({ data, only }: { data: VatLedgerDataT; only: 'output' | 
                     <td className="px-4 py-2 font-mono text-brand-navy">{r.ref}</td>
                     <td className="px-4 py-2 text-slate-700 max-w-[240px] truncate">{r.particulars}</td>
                     <td className="px-4 py-2 text-right text-slate-500">{r.ratePercent}%</td>
-                    <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(r.taxable, r.currency)}</td>
-                    <td className="px-4 py-2 text-right font-semibold text-emerald-700">{formatCurrency(r.vat, r.currency)}</td>
+                    <td className="px-4 py-2 text-right text-slate-600">{accFmt(r.taxable, r.currency)}</td>
+                    <td className={`px-4 py-2 text-right font-semibold ${r.vat < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{accFmt(r.vat, r.currency)}</td>
                     <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(r.running, r.currency)} Cr</td>
                   </tr>
                 ))}
@@ -1530,7 +1572,9 @@ function ProfitLossView({ data }: { data: ProfitLossDataT }) {
             {rows.map((r, i) => (
               <tr key={`${r.code}-${i}`} className="hover:bg-slate-50">
                 <td className="px-4 py-2 text-slate-700"><span className="font-mono text-xs text-slate-400 mr-2">{r.code}</span>{r.name}</td>
-                <td className="px-4 py-2 text-right font-medium tabular-nums">{aed(r.amount)}</td>
+                <td className={`px-4 py-2 text-right font-medium tabular-nums ${r.amount < 0 ? 'text-rose-700' : ''}`}>
+                  {r.amount < 0 ? `(${aed(-r.amount)})` : aed(r.amount)}
+                </td>
               </tr>
             ))}
           </tbody>

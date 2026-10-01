@@ -10,9 +10,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { Invoice, InvoiceStatus } from '@/types';
 import {
   Plus, FileText, Trash2, Eye, Pencil, X, Search, Receipt, Download, Loader2, FileType, CheckCircle2,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, FileMinus,
 } from 'lucide-react';
 import { CreateInvoiceModal } from './CreateInvoiceModal';
+import { CreditNoteModal } from './CreditNoteModal';
 
 // Extension of the shared Invoice type to surface the computed balance
 // the backend now returns alongside each invoice.
@@ -21,6 +22,8 @@ type InvoiceWithBalance = Invoice & {
   outstanding?: number;
   paidPercent?: number;
   adjustments?: number;
+  creditNotes?: number; // total of credit notes issued (reduces the invoice)
+  netTotal?: number;    // invoice total less credit notes
 };
 
 const STATUS_CONFIG: Record<InvoiceStatus, { label: string; bg: string; color: string }> = {
@@ -51,6 +54,11 @@ function BalanceCell({ inv }: { inv: InvoiceWithBalance }) {
       <div className="text-sm font-bold text-slate-900 tabular-nums">
         {formatCurrency(total, inv.currency)}
       </div>
+      {(inv.creditNotes ?? 0) > 0.005 && (
+        <div className="text-[11px] text-rose-700 tabular-nums">
+          − {formatCurrency(inv.creditNotes!, inv.currency)} credit note
+        </div>
+      )}
       <div className="mt-1 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
         <div className={`h-full ${barFill} transition-all`} style={{ width: `${paidPercent}%` }} />
       </div>
@@ -72,7 +80,9 @@ function BalanceCell({ inv }: { inv: InvoiceWithBalance }) {
   );
 }
 
-function InvoiceDetailModal({ invoice, onClose }: { invoice: InvoiceWithBalance; onClose: () => void }) {
+function InvoiceDetailModal({ invoice, onClose, onCreditNote }: {
+  invoice: InvoiceWithBalance; onClose: () => void; onCreditNote: () => void;
+}) {
   const cfg = STATUS_CONFIG[invoice.status];
   const [downloadingWord, setDownloadingWord] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -83,6 +93,7 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: InvoiceWithBalance;
   const paidPercent = invoice.paidPercent ?? (total > 0 ? Math.round((paid / total) * 100) : 0);
   const isFullyPaid = outstanding <= 0.005;
   const isOverdue = !isFullyPaid && !!invoice.dueDate && new Date(invoice.dueDate) < new Date();
+  const creditNotes = invoice.creditNotes ?? 0;
 
   const handleDownloadWord = async () => {
     setDownloadingWord(true);
@@ -125,6 +136,13 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: InvoiceWithBalance;
             <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(invoice.invoiceDate)}</p>
           </div>
           <div className="flex items-center gap-2">
+            {invoice.status !== 'CANCELLED' && (
+              <button onClick={onCreditNote}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-rose-700 border border-rose-200 rounded-xl hover:bg-rose-50">
+                <FileMinus className="w-4 h-4" />
+                Credit Note
+              </button>
+            )}
             <button onClick={handleDownloadPdf} disabled={downloadingPdf}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy rounded-xl hover:bg-brand-navy/90 disabled:opacity-50">
               {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileType className="w-4 h-4" />}
@@ -148,6 +166,9 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: InvoiceWithBalance;
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Invoice Total</p>
                 <p className="text-lg font-bold text-slate-900 tabular-nums">{formatCurrency(total, invoice.currency)}</p>
+                {creditNotes > 0.005 && (
+                  <p className="text-[11px] text-rose-700 tabular-nums">− {formatCurrency(creditNotes, invoice.currency)} credited</p>
+                )}
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Received</p>
@@ -255,6 +276,18 @@ function InvoiceDetailModal({ invoice, onClose }: { invoice: InvoiceWithBalance;
                 <span>Total ({invoice.currency})</span>
                 <span className="text-brand-navy text-base tabular-nums">{formatCurrency(invoice.total, invoice.currency)}</span>
               </div>
+              {creditNotes > 0.005 && (
+                <>
+                  <div className="flex justify-between text-rose-700 text-xs">
+                    <span>Less: Credit notes</span>
+                    <span className="tabular-nums">({formatCurrency(creditNotes, invoice.currency)})</span>
+                  </div>
+                  <div className="flex justify-between text-slate-700 text-xs font-semibold">
+                    <span>Revised total</span>
+                    <span className="tabular-nums">{formatCurrency(invoice.netTotal ?? total - creditNotes, invoice.currency)}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-emerald-700 text-xs">
                 <span>Received</span>
                 <span className="tabular-nums">{formatCurrency(paid, invoice.currency)}</span>
@@ -284,6 +317,7 @@ export default function InvoicesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<InvoiceWithBalance | null>(null);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [creditNoteFor, setCreditNoteFor] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
   const [page, setPage] = useState(1);
@@ -428,6 +462,15 @@ export default function InvoicesPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {inv.status !== 'CANCELLED' && (
+                            <button
+                              onClick={() => setCreditNoteFor(inv.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Credit note"
+                            >
+                              <FileMinus className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => setEditInvoice(inv)}
                             className="p-1.5 text-slate-400 hover:text-brand-navy hover:bg-slate-100 rounded-lg transition-colors"
@@ -537,7 +580,14 @@ export default function InvoicesPage() {
         />
       )}
       {viewInvoice && (
-        <InvoiceDetailModal invoice={viewInvoice} onClose={() => setViewInvoice(null)} />
+        <InvoiceDetailModal
+          invoice={viewInvoice}
+          onClose={() => setViewInvoice(null)}
+          onCreditNote={() => { setCreditNoteFor(viewInvoice.id); setViewInvoice(null); }}
+        />
+      )}
+      {creditNoteFor && (
+        <CreditNoteModal invoiceId={creditNoteFor} onClose={() => setCreditNoteFor(null)} />
       )}
       {editInvoice && (
         <CreateInvoiceModal
