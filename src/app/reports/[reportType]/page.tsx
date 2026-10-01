@@ -251,19 +251,19 @@ export default function ReportDetailPage() {
       lines.push('');
       lines.push('PURCHASE');
       lines.push(toCsv(
-        ['#', 'Voucher #', 'Date', 'Supplier', 'Ref', 'Narration', 'Currency', 'Amount'],
-        jp.purchaseRows.map((r, i) => [i + 1, r.voucherNumber, r.voucherDate?.slice(0, 10) || '', r.supplierName, r.ref, r.narration, r.currency, r.amount]),
+        ['#', 'Voucher #', 'Date', 'Supplier', 'Ref', 'Narration', 'Currency', 'Amount', 'Rate', 'Amount (AED)'],
+        jp.purchaseRows.map((r, i) => [i + 1, r.voucherNumber, r.voucherDate?.slice(0, 10) || '', r.supplierName, r.ref, r.narration, r.currency, r.amount, r.exchangeRate ?? 1, r.amountAed ?? r.amount]),
       ));
       lines.push('');
       lines.push('SALES');
       lines.push(toCsv(
-        ['#', 'Invoice #', 'Date', 'Customer', 'Status', 'Currency', 'Paid', 'Outstanding', 'Total'],
-        jp.salesRows.map((r, i) => [i + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10) || '', r.billToName, r.status, r.currency, r.paid, r.outstanding, r.total]),
+        ['#', 'Invoice #', 'Date', 'Customer', 'Status', 'Currency', 'Total', 'Rate', 'Paid (AED)', 'Outstanding (AED)', 'Total (AED)'],
+        jp.salesRows.map((r, i) => [i + 1, r.invoiceNumber, r.invoiceDate?.slice(0, 10) || '', r.billToName, r.status, r.currency, r.total, r.exchangeRate ?? 1, r.paidAed ?? r.paid, r.outstandingAed ?? r.outstanding, r.totalAed ?? r.total]),
       ));
       lines.push('');
       lines.push('SUMMARY');
       lines.push(toCsv(
-        ['Total Sales', 'Total Purchase', 'Net Profit', 'Current Outstanding'],
+        ['Total Sales (AED)', 'Total Purchase (AED)', 'Net Profit (AED)', 'Current Outstanding (AED)'],
         [[jp.totals.totalSales, jp.totals.totalPurchase, jp.totals.netProfit, jp.totals.totalOutstanding]],
       ));
       downloadCsv(`JobProfit_${jp.order.orderNumber}.csv`, lines.join('\n'));
@@ -1153,8 +1153,11 @@ interface JobProfitDataT {
     supplierName: string;
     ref: string;
     narration: string;
+    // Original document currency + amount, and its AED equivalent.
     currency: string;
     amount: number;
+    exchangeRate?: number;
+    amountAed?: number;
   }[];
   salesRows: {
     invoiceNumber: string;
@@ -1165,16 +1168,37 @@ interface JobProfitDataT {
     paid: number;
     outstanding: number;
     status: string;
+    exchangeRate?: number;
+    totalAed?: number;
+    paidAed?: number;
+    outstandingAed?: number;
   }[];
+  // Every total below is in baseCurrency (AED).
+  baseCurrency?: string;
+  fxRates?: { currency: string; rate: number }[];
   totals: {
     totalPurchase: number;
     totalSales: number;
     netProfit: number;
+    profitMargin?: number | null;
     totalOutstanding: number;
   };
 }
+
+// Original-currency hint shown under an AED amount for foreign documents.
+function FxHint({ amount, currency, rate, base }: { amount: number; currency: string; rate?: number; base: string }) {
+  if (!currency || currency === base) return null;
+  return (
+    <span className="block text-[11px] font-normal text-slate-400">
+      {formatCurrency(amount, currency)} @ {rate ?? 1}
+    </span>
+  );
+}
 function JobProfitView({ data }: { data: JobProfitDataT }) {
-  const cur = data.salesRows[0]?.currency || data.purchaseRows[0]?.currency || 'AED';
+  // All figures are reported in AED; foreign documents show their original
+  // amount + conversion rate beneath the AED value.
+  const cur = data.baseCurrency || 'AED';
+  const fxRates = data.fxRates || [];
   const profitTone: 'emerald' | 'rose' = data.totals.netProfit >= 0 ? 'emerald' : 'rose';
   return (
     <>
@@ -1203,7 +1227,12 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
         <StatCard label="Total Sales (S)" value={formatCurrency(data.totals.totalSales, cur)} accent="emerald" />
         <StatCard label="Total Purchase (P)" value={formatCurrency(data.totals.totalPurchase, cur)} accent="rose" />
-        <StatCard label="Net Profit (S − P)" value={formatCurrency(data.totals.netProfit, cur)} accent={profitTone} />
+        <StatCard
+          label="Net Profit (S − P)"
+          value={formatCurrency(data.totals.netProfit, cur)}
+          accent={profitTone}
+          sub={data.totals.profitMargin != null ? `${data.totals.profitMargin.toFixed(2)}% margin` : undefined}
+        />
         <StatCard label="Current Outstanding" value={formatCurrency(data.totals.totalOutstanding, cur)} accent="navy" sub="receivable on this Job" />
       </div>
       <Panel title={`Purchase — costs against this Job (${data.purchaseRows.length})`}>
@@ -1212,7 +1241,7 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <Th align="center">#</Th><Th>Voucher #</Th><Th>Date</Th><Th>Supplier</Th>
-                <Th>Ref / Sup Inv</Th><Th>Narration</Th><Th align="right">Amount</Th>
+                <Th>Ref / Sup Inv</Th><Th>Narration</Th><Th align="right">Amount ({cur})</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1230,7 +1259,10 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
                   </td>
                   <td className="px-4 py-2 text-xs font-mono text-slate-500">{r.ref || '—'}</td>
                   <td className="px-4 py-2 text-xs text-slate-600 max-w-[280px] truncate" title={r.narration}>{r.narration || '—'}</td>
-                  <td className="px-4 py-2 text-right font-semibold text-rose-700">{formatCurrency(r.amount, r.currency)}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-rose-700">
+                    {formatCurrency(r.amountAed ?? r.amount, cur)}
+                    <FxHint amount={r.amount} currency={r.currency} rate={r.exchangeRate} base={cur} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1252,7 +1284,7 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <Th align="center">#</Th><Th>Invoice #</Th><Th>Date</Th><Th>Customer</Th>
-                <Th>Status</Th><Th align="right">Paid</Th><Th align="right">Outstanding</Th><Th align="right">Total</Th>
+                <Th>Status</Th><Th align="right">Paid ({cur})</Th><Th align="right">Outstanding ({cur})</Th><Th align="right">Total ({cur})</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1266,9 +1298,12 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
                   <td className="px-4 py-2 text-slate-500">{formatDate(r.invoiceDate)}</td>
                   <td className="px-4 py-2">{r.billToName}</td>
                   <td className="px-4 py-2"><Pill>{r.status}</Pill></td>
-                  <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.paid, r.currency)}</td>
-                  <td className="px-4 py-2 text-right text-rose-700">{formatCurrency(r.outstanding, r.currency)}</td>
-                  <td className="px-4 py-2 text-right font-semibold">{formatCurrency(r.total, r.currency)}</td>
+                  <td className="px-4 py-2 text-right text-emerald-700">{formatCurrency(r.paidAed ?? r.paid, cur)}</td>
+                  <td className="px-4 py-2 text-right text-rose-700">{formatCurrency(r.outstandingAed ?? r.outstanding, cur)}</td>
+                  <td className="px-4 py-2 text-right font-semibold">
+                    {formatCurrency(r.totalAed ?? r.total, cur)}
+                    <FxHint amount={r.total} currency={r.currency} rate={r.exchangeRate} base={cur} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1302,6 +1337,10 @@ function JobProfitView({ data }: { data: JobProfitDataT }) {
             </p>
           </div>
         </div>
+        <p className="text-[11px] text-white/50 mt-4">
+          All amounts in {cur}
+          {fxRates.length > 0 && <> · converted at {fxRates.map((f) => `1 ${f.currency} = ${f.rate} ${cur}`).join(', ')}</>}
+        </p>
       </div>
     </>
   );
