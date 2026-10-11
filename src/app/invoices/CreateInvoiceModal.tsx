@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { COUNTRIES, inferCountryCode, normalizeCountryCode } from '@/lib/countries';
@@ -192,6 +192,7 @@ interface CreateInvoiceModalProps {
 
 export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoiceModalProps) {
   const isEdit = !!editing;
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<InvoiceForm>(() => editing ? formFromInvoice(editing) : emptyForm());
   const [error, setError] = useState('');
   const [showShipFrom, setShowShipFrom] = useState(false);
@@ -267,23 +268,72 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
     }));
   };
 
+  // Fill Bill To from the customer's last invoice — used when the Account
+  // Master record has no address yet (older customers). Only empty fields
+  // are filled so nothing the user already typed is lost.
+  const fillFromLastInvoice = async (params: { accountId?: string; name?: string }) => {
+    try {
+      const q = new URLSearchParams();
+      if (params.accountId) q.set('accountId', params.accountId);
+      if (params.name) q.set('name', params.name);
+      const last = (await api.get(`/invoices/bill-to?${q}`)).data?.data as Partial<Invoice> | null;
+      if (!last) return;
+      setForm((f) => ({
+        ...f,
+        billToAddress: f.billToAddress || last.billToAddress || '',
+        billToCity: f.billToCity || last.billToCity || '',
+        billToCountry: f.billToAddress ? f.billToCountry : (normalizeCountryCode(last.billToCountry) || f.billToCountry),
+        billToEmail: f.billToEmail || last.billToEmail || '',
+        billToPhone: f.billToPhone || last.billToPhone || '',
+      }));
+    } catch { /* optional convenience */ }
+  };
+
+  // Selecting a customer fills Bill To from Account Master. The customer's
+  // saved details win over whatever was in the form (switching customer
+  // must not leave the previous customer's address behind); a field the
+  // master doesn't have keeps its current value.
   const applyAccount = (id: string) => {
-    setForm((f) => ({ ...f, accountId: id }));
-    if (!id) return;
-    const a = accounts.find((x) => x.id === id);
-    if (!a) return;
-    const addr = a.deliveryAddress || a.address || '';
+    const a = id ? accounts.find((x) => x.id === id) : undefined;
+    if (!a) { setForm((f) => ({ ...f, accountId: id })); return; }
+    const addr = (a.deliveryAddress || a.address || '').trim();
     const inferred = inferCountryCode(`${addr} ${a.place ?? ''}`) || '';
-    setForm((f) => ({
-      ...f,
-      accountId: id,
-      billToName: f.billToName || a.name,
-      billToAddress: f.billToAddress || addr,
-      billToCity: f.billToCity || a.place || '',
-      billToCountry: inferred || f.billToCountry,
-      billToEmail: f.billToEmail || a.email || a.financeEmail || '',
-      billToPhone: f.billToPhone || a.mobile1 || a.phone1 || '',
-    }));
+    setForm((f) => {
+      // Switching from one customer to another: drop the old customer's
+      // details instead of carrying them onto the new one.
+      const switching = !!f.accountId && f.accountId !== id;
+      const keep = (v: string) => (switching ? '' : v);
+      return {
+        ...f,
+        accountId: id,
+        billToName: a.name,
+        billToAddress: addr || keep(f.billToAddress),
+        billToCity: a.place?.trim() || keep(f.billToCity),
+        billToCountry: inferred || f.billToCountry,
+        billToEmail: a.email || a.financeEmail || keep(f.billToEmail),
+        billToPhone: a.mobile1 || a.phone1 || keep(f.billToPhone),
+      };
+    });
+    if (!addr || !a.place?.trim()) fillFromLastInvoice({ accountId: id, name: a.name });
+  };
+
+  // Typing the customer name in Bill To suggests matching accounts.
+  const [nameFocused, setNameFocused] = useState(false);
+  const nameSuggestions = useMemo(() => {
+    const q = form.billToName.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return accounts
+      .filter((a) => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))
+      .filter((a) => a.id !== form.accountId)
+      .slice(0, 8);
+  }, [accounts, form.billToName, form.accountId]);
+  const onNameBlur = () => {
+    setNameFocused(false);
+    const typed = form.billToName.trim().toLowerCase();
+    if (!typed || form.accountId) return;
+    const exact = accounts.filter((a) => a.name.trim().toLowerCase() === typed);
+    if (exact.length === 1) applyAccount(exact[0].id);
+    else if (!form.billToAddress) fillFromLastInvoice({ name: form.billToName.trim() });
   };
 
   const mutation = useMutation({
@@ -356,7 +406,12 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
         ? api.patch(`/invoices/${editing!.id}`, payload)
         : api.post('/invoices', payload);
     },
-    onSuccess: () => { onSuccess(); onClose(); },
+    onSuccess: () => {
+      // The backend may have saved this bill-to address onto the customer's
+      // Account Master record — refresh so the next invoice picks it up.
+      queryClient.invalidateQueries({ queryKey: ['accounts-for-invoice'] });
+      onSuccess(); onClose();
+    },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setError(err.response?.data?.message || (isEdit ? 'Failed to update invoice.' : 'Failed to create invoice.'));
     },
@@ -553,6 +608,11 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
               <p className="text-[11px] text-slate-500 mt-1">
                 Bill-to fields auto-filled from <span className="font-semibold text-brand-navy">{selectedAccount.code} · {selectedAccount.name}</span>.
                 You can still override any field below.
+                {!(selectedAccount.deliveryAddress || selectedAccount.address) && (
+                  <span className="block text-amber-700">
+                    No address saved for this customer yet — the address you enter will be saved to Account Master for next time.
+                  </span>
+                )}
               </p>
             )}
             {accounts.length === 0 && (
@@ -610,8 +670,38 @@ export function CreateInvoiceModal({ onClose, onSuccess, editing }: CreateInvoic
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className={labelCls}>Full Name / Company *</label>
-                <input value={form.billToName} onChange={(e) => set('billToName', e.target.value)}
-                  placeholder="John Smith / Acme Corp" className={inputCls} />
+                <div className="relative">
+                  <input
+                    value={form.billToName}
+                    onChange={(e) => { set('billToName', e.target.value); setNameFocused(true); }}
+                    onFocus={() => setNameFocused(true)}
+                    onBlur={onNameBlur}
+                    placeholder="Start typing a customer name…"
+                    autoComplete="off"
+                    className={inputCls}
+                  />
+                  {nameFocused && nameSuggestions.length > 0 && (
+                    <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Customers in Account Master</p>
+                      {nameSuggestions.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          // mousedown fires before the input's blur, so the
+                          // pick lands before the list closes.
+                          onMouseDown={(e) => { e.preventDefault(); applyAccount(a.id); setNameFocused(false); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-brand-navy/5"
+                        >
+                          <span className="font-semibold text-brand-navy">{a.code}</span>
+                          <span className="text-slate-700"> · {a.name}</span>
+                          {(a.deliveryAddress || a.address) && (
+                            <span className="block text-xs text-slate-400 truncate">{a.deliveryAddress || a.address}{a.place ? `, ${a.place}` : ''}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Address *</label>
